@@ -77,8 +77,10 @@ class _AddServerScreenState extends State<AddServerScreen> {
         context: context,
         builder: (c) => AlertDialog(
           title: const Text('Self-signed certificate'),
-          content: SelectableText('Fingerprint (SHA-256):\n\n$fp\n\n'
-              'Compare it with the one shown by "dmn pair" or the web panel. Trust this server?'),
+          content: SelectableText(
+            'Fingerprint (SHA-256):\n\n$fp\n\n'
+            'Compare it with the one shown by "dmn pair" or the web panel. Trust this server?',
+          ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
             FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Trust')),
@@ -100,14 +102,22 @@ class _AddServerScreenState extends State<AddServerScreen> {
           if (widget.first)
             const Padding(
               padding: EdgeInsets.only(bottom: 16),
-              child: Text('Connect to your server. In its web panel open Settings, "Pair a phone", '
-                  'or run "sudo dmn pair" on the server, then scan the code.'),
+              child: Text(
+                'Connect to your server. In its web panel open Settings, "Pair a phone", '
+                'or run "sudo dmn pair" on the server, then scan the code.',
+              ),
             ),
           FilledButton.icon(
-              onPressed: _busy ? null : _scan, icon: const Icon(Icons.qr_code_scanner), label: const Text('Scan QR code')),
+            onPressed: _busy ? null : _scan,
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('Scan QR code'),
+          ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-              onPressed: _busy ? null : _paste, icon: const Icon(Icons.content_paste), label: const Text('Paste pairing link')),
+            onPressed: _busy ? null : _paste,
+            icon: const Icon(Icons.content_paste),
+            label: const Text('Paste pairing link'),
+          ),
           const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Text('Or enter it by hand')),
           TextField(
             controller: _url,
@@ -151,7 +161,11 @@ class _ScannerState extends State<_Scanner> {
       appBar: AppBar(title: const Text('Scan pairing code')),
       body: MobileScanner(
         onDetect: (capture) {
-          final v = capture.barcodes.map((b) => b.rawValue).whereType<String>().where((s) => s.startsWith('dmn://')).firstOrNull;
+          final v = capture.barcodes
+              .map((b) => b.rawValue)
+              .whereType<String>()
+              .where((s) => s.startsWith('dmn://'))
+              .firstOrNull;
           if (v != null && !_done) {
             _done = true;
             Navigator.pop(context, v);

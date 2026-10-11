@@ -1,6 +1,8 @@
 // The download queue of one server, with live progress from /v1/events.
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'api.dart';
@@ -19,19 +21,23 @@ class _JobsViewState extends State<JobsView> {
   String _error = '';
   StreamSubscription? _sub;
   Timer? _retry;
+  Timer? _refresh; // catches what progress events miss: jobs added elsewhere, or failing before they ever run
 
   @override
   void initState() {
     super.initState();
     _load();
     _listen();
+    _refresh = Timer.periodic(const Duration(seconds: 10), (_) => _load());
   }
 
   @override
   void dispose() {
     _sub?.cancel();
     _retry?.cancel();
+    _refresh?.cancel();
     _api.close();
+    _link.dispose();
     super.dispose();
   }
 
@@ -51,13 +57,19 @@ class _JobsViewState extends State<JobsView> {
 
   // Progress only covers running jobs; when that set changes (one finished or started), reload the list.
   void _listen() {
-    _sub = _api.progress().listen((p) {
-      final live = {for (final x in p) x['id'] as String: x};
-      final changed = live.keys.toSet().difference(_live.keys.toSet()).isNotEmpty ||
-          _live.keys.toSet().difference(live.keys.toSet()).isNotEmpty;
-      if (mounted) setState(() => _live = live);
-      if (changed) _load();
-    }, onError: (_) => _reconnect(), onDone: _reconnect, cancelOnError: true);
+    _sub = _api.progress().listen(
+      (p) {
+        final live = {for (final x in p) x['id'] as String: x};
+        final changed =
+            live.keys.toSet().difference(_live.keys.toSet()).isNotEmpty ||
+            _live.keys.toSet().difference(live.keys.toSet()).isNotEmpty;
+        if (mounted) setState(() => _live = live);
+        if (changed) _load();
+      },
+      onError: (_) => _reconnect(),
+      onDone: _reconnect,
+      cancelOnError: true,
+    );
   }
 
   void _reconnect() {
@@ -100,34 +112,86 @@ class _JobsViewState extends State<JobsView> {
     if (ok == true) await _act(() => _api.call('DELETE', '/v1/jobs/${j['id']}?deleteFiles=$files'));
   }
 
+  final _link = TextEditingController();
+
+  // The only way to put something on the server: queue a download (link, magnet, video page or .torrent).
+  Future<void> _addLink() async {
+    final l = _link.text.trim();
+    if (l.isEmpty) return;
+    await _act(() => _api.add(l));
+    _link.clear();
+  }
+
+  Future<void> _addTorrent() async {
+    final picked = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['torrent']);
+    if (picked.isEmpty) return;
+    final bytes = await picked.first.readAsBytes();
+    if (bytes.isNotEmpty) await _act(() => _api.call('POST', '/v1/jobs', {'torrent': base64Encode(bytes)}));
+  }
+
+  Widget _addBox() => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+    child: Column(
+      children: [
+        TextField(
+          controller: _link,
+          keyboardType: TextInputType.url,
+          onSubmitted: (_) => _addLink(),
+          decoration: InputDecoration(
+            hintText: 'Link, video page or magnet',
+            border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(28))),
+            prefixIcon: const Icon(Icons.link),
+            suffixIcon: IconButton(icon: const Icon(Icons.send), tooltip: 'Download', onPressed: _addLink),
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: _addTorrent,
+            icon: const Icon(Icons.upload_file),
+            label: const Text('.torrent file'),
+          ),
+        ),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
+    final List<Widget> items;
     if (_jobs == null) {
-      return Center(
-        child: _error.isEmpty
-            ? const CircularProgressIndicator()
-            : Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text(_error, textAlign: TextAlign.center),
-                  const SizedBox(height: 12),
-                  OutlinedButton(onPressed: _load, child: const Text('Retry')),
-                ]),
-              ),
-      );
+      items = [
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: Center(
+            child: _error.isEmpty
+                ? const CircularProgressIndicator()
+                : Column(
+                    children: [
+                      Text(_error, textAlign: TextAlign.center),
+                      const SizedBox(height: 12),
+                      OutlinedButton(onPressed: _load, child: const Text('Retry')),
+                    ],
+                  ),
+          ),
+        ),
+      ];
+    } else if (_jobs!.isEmpty) {
+      items = [
+        const Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(child: Text('No downloads yet. Paste a link above, or copy one and reopen the app.')),
+        ),
+      ];
+    } else {
+      items = [for (final j in _jobs!) _tile(j)];
     }
     return RefreshIndicator(
       onRefresh: _load,
-      child: _jobs!.isEmpty
-          ? ListView(children: const [
-              Padding(padding: EdgeInsets.all(32), child: Center(child: Text('No downloads yet. Tap + or copy a link.'))),
-            ])
-          : ListView.separated(
-              padding: const EdgeInsets.only(bottom: 88),
-              itemCount: _jobs!.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (_, i) => _tile(_jobs![i]),
-            ),
+      child: ListView(
+        padding: const EdgeInsets.only(bottom: 24),
+        children: [_addBox(), const Divider(height: 1), ...items],
+      ),
     );
   }
 
@@ -146,20 +210,27 @@ class _JobsViewState extends State<JobsView> {
       if ((j['error'] ?? '') != '') j['error'],
     ];
     return ListTile(
-      title: Text((j['name'] as String?)?.isNotEmpty == true ? j['name'] : j['source'], maxLines: 2, overflow: TextOverflow.ellipsis),
-      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (state != 'done') Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: LinearProgressIndicator(value: total > 0 ? done / total : null),
-        ),
-        Text(parts.join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis),
-      ]),
+      title: Text(
+        (j['name'] as String?)?.isNotEmpty == true ? j['name'] : j['source'],
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (state != 'done' && state != 'failed')
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: LinearProgressIndicator(value: total > 0 ? done / total : null),
+            ),
+          Text(parts.join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis),
+        ],
+      ),
       trailing: PopupMenuButton<String>(
-        onSelected: (a) => a == 'remove'
-            ? _remove(j)
-            : _act(() => _api.call('POST', '/v1/jobs/${j['id']}/$a')),
+        onSelected: (a) => a == 'remove' ? _remove(j) : _act(() => _api.call('POST', '/v1/jobs/${j['id']}/$a')),
         itemBuilder: (_) => [
-          if (state != 'done') PopupMenuItem(value: paused ? 'resume' : 'pause', child: Text(paused ? 'Resume' : 'Pause')),
+          if (state != 'done')
+            PopupMenuItem(value: paused ? 'resume' : 'pause', child: Text(paused ? 'Resume' : 'Pause')),
           const PopupMenuItem(value: 'remove', child: Text('Remove')),
         ],
       ),

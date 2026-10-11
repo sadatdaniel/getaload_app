@@ -102,8 +102,10 @@ class _ServerScreenState extends State<ServerScreen> {
       context: context,
       builder: (d) => AlertDialog(
         title: Text('Remove ${widget.server.name}?'),
-        content: const Text('The app forgets this server. Downloads on the server stay. '
-            'Pair again to add it back.'),
+        content: const Text(
+          'The app forgets this server. Downloads on the server stay. '
+          'Pair again to add it back.',
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Remove')),
@@ -111,35 +113,38 @@ class _ServerScreenState extends State<ServerScreen> {
       ),
     );
     if (ok != true) return;
-    await widget.servers.remove(widget.server);
-    if (mounted) Navigator.pop(context);
+    await widget.servers.remove(widget.server); // the home screen switches to the next server
   }
 
   @override
   Widget build(BuildContext context) {
     final s = widget.server;
     final status = _drive?['status'];
-    return Scaffold(
-      appBar: AppBar(title: Text(s.name)),
-      body: ListView(children: [
+    return ListView(
+      children: [
         ListTile(title: const Text('Address'), subtitle: Text(s.url)),
         if (_version.isNotEmpty) ListTile(title: const Text('Server version'), subtitle: Text(_version)),
         if (s.fp.isNotEmpty)
-          ListTile(title: const Text('Certificate (pinned)'), subtitle: Text(s.fp, maxLines: 2, overflow: TextOverflow.ellipsis)),
+          ListTile(
+            title: const Text('Certificate (pinned)'),
+            subtitle: Text(s.fp, maxLines: 2, overflow: TextOverflow.ellipsis),
+          ),
         ListTile(leading: const Icon(Icons.edit), title: const Text('Rename'), onTap: _rename),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.add_to_drive),
           title: const Text('Google Drive'),
-          subtitle: Text(_driveError.isNotEmpty
-              ? _driveError
-              : status == null
-                  ? 'Checking...'
-                  : status == 'ready'
-                      ? 'Connected. Finished downloads can be copied there.'
-                      : status == 'missing-tool'
-                          ? 'The server is missing a helper tool: ${_drive?['reason'] ?? ''}'
-                          : 'Not connected'),
+          subtitle: Text(
+            _driveError.isNotEmpty
+                ? _driveError
+                : status == null
+                ? 'Checking...'
+                : status == 'ready'
+                ? 'Connected. Finished downloads can be copied there.'
+                : status == 'missing-tool'
+                ? 'The server is missing a helper tool: ${_drive?['reason'] ?? ''}'
+                : 'Not connected',
+          ),
           trailing: status != null && status != 'missing-tool'
               ? TextButton(onPressed: _connectDrive, child: Text(status == 'ready' ? 'Reconnect' : 'Connect'))
               : null,
@@ -150,13 +155,16 @@ class _ServerScreenState extends State<ServerScreen> {
             child: Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Enter this code on the Google page (it is copied):'),
-                  const SizedBox(height: 8),
-                  SelectableText(_signin!['userCode'] ?? '', style: Theme.of(context).textTheme.headlineMedium),
-                  const SizedBox(height: 8),
-                  const Text('Waiting for approval...'),
-                ]),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Enter this code on the Google page (it is copied):'),
+                    const SizedBox(height: 8),
+                    SelectableText(_signin!['userCode'] ?? '', style: Theme.of(context).textTheme.headlineMedium),
+                    const SizedBox(height: 8),
+                    const Text('Waiting for approval...'),
+                  ],
+                ),
               ),
             ),
           ),
@@ -166,7 +174,7 @@ class _ServerScreenState extends State<ServerScreen> {
           title: const Text('Remove from this phone'),
           onTap: _remove,
         ),
-      ]),
+      ],
     );
   }
 }
