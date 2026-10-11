@@ -5,8 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
+import 'icons.dart';
 import 'jobs.dart' show fmtBytes;
+import 'media.dart';
 import 'phone.dart';
+import 'launch.dart';
+import 'settings.dart';
 
 class FilesView extends StatefulWidget {
   final Server server;
@@ -60,6 +64,7 @@ class _FilesViewState extends State<FilesView> {
       _cache[_key(h)] = es;
       if (!mounted || _here != h) return; // the user moved on meanwhile
       setState(() => _entries = es);
+      _loadStatus();
       _api.usage().then(
         (u) => mounted ? setState(() => _free = '${fmtBytes(u['free'] ?? 0)} free') : null,
         onError: (_) {},
@@ -106,9 +111,45 @@ class _FilesViewState extends State<FilesView> {
   String _parent(String p) => p.lastIndexOf('/') <= 0 ? '/' : p.substring(0, p.lastIndexOf('/'));
 
   void _open(FileEntry e) {
-    if (e.dir) return _go(_Place(e.archive == null ? e.path : e.path, e.archive));
+    if (e.dir) return _go(_Place(e.path, e.archive));
     if (e.isArchive) return _go(_Place('.', e.path));
+    if (e.isVideo || e.isAudio) {
+      _play(e);
+      return;
+    }
     _menu(e);
+  }
+
+  // A file still downloading is played through the job stream: it waits for missing bytes and, for torrents,
+  // fetches the pieces under the playhead first. Reading the file from disk would hit unwritten parts.
+  Future<Playable?> _livePlayable(FileEntry e) async {
+    if (e.archive != null) return null;
+    String? id, rel;
+    for (final MapEntry(:key, :value) in _status.entries) {
+      if (value.jobId == null || value.progress == null) continue;
+      if (e.path == key) id = value.jobId;
+      if (e.path.startsWith('$key/')) (id, rel) = (value.jobId, e.path.substring(key.length + 1));
+    }
+    if (id == null) return null;
+    var url = (await _api.signedJobUrl(id)).toString();
+    if (rel != null) {
+      // A file inside a torrent folder: the stream endpoint picks files by index.
+      final files = ((await _api.call('GET', '/v1/jobs/$id/files')) as List? ?? []).cast<Map<String, dynamic>>();
+      final i = files.indexWhere((f) => (f['path'] as String? ?? '').endsWith(rel!)); // the index is the list position
+      if (i < 0) return null;
+      url += '&file=$i';
+    }
+    return Playable(id: 'server:${_api.server.url}::${e.path}', title: e.name, url: url, via: _api.server);
+  }
+
+  Future<void> _play(FileEntry e) async {
+    try {
+      final live = await _livePlayable(e);
+      final p = live ?? await serverPlayable(_api, e, e.archive == null ? (_entries ?? []) : []);
+      if (mounted) await play(context, p);
+    } catch (x) {
+      _toast(x.toString());
+    }
   }
 
   Future<String?> _ask(String title, String initial, String action) {
@@ -152,6 +193,7 @@ class _FilesViewState extends State<FilesView> {
                 subtitle: Text(e.dir ? 'Folder' : fmtBytes(e.size)),
               ),
               if (e.isArchive) _item(c, 'open', Icons.folder_zip_outlined, 'Show contents'),
+              if (e.isVideo || e.isAudio) _item(c, 'play', Icons.play_arrow, 'Play'),
               if (!e.dir) _item(c, 'download', Icons.download, Api.canDownload ? 'Download to this phone' : 'Download'),
               if (!e.dir) _item(c, 'link', Icons.link, 'Copy stream link (6 h)'),
               if (!inArchive) ...[
@@ -169,6 +211,8 @@ class _FilesViewState extends State<FilesView> {
     switch (a) {
       case 'open':
         _open(e);
+      case 'play':
+        await _play(e);
       case 'download':
         await _download(e);
       case 'link':
@@ -225,80 +269,181 @@ class _FilesViewState extends State<FilesView> {
     );
   }
 
-  IconData _icon(FileEntry e) => e.dir
-      ? Icons.folder
-      : e.isArchive
-      ? Icons.folder_zip
-      : e.isVideo
-      ? Icons.movie_outlined
-      : e.isAudio
-      ? Icons.music_note_outlined
-      : Icons.insert_drive_file_outlined;
+  // Badges from the job list: still downloading, or copied to a cloud. Keyed by server path.
+  Map<String, FileStatus> _status = {};
+
+  Future<void> _loadStatus() async {
+    try {
+      final st = <String, FileStatus>{};
+      for (final j in await _api.jobs()) {
+        final p = (j['path'] as String?) ?? '';
+        if (p.isEmpty) continue;
+        final key = '/$p';
+        final prev = st[key];
+        if (j['kind'] == 'copy') {
+          if (j['state'] == 'done') st[key] = FileStatus(progress: prev?.progress, cloud: true, jobId: prev?.jobId);
+        } else if (j['state'] != 'done' && j['state'] != 'seeding') {
+          final done = (j['done'] as num?) ?? 0, total = (j['total'] as num?) ?? 0;
+          st[key] = FileStatus(progress: total > 0 ? done / total : -1, cloud: prev?.cloud ?? false, jobId: j['id']);
+        }
+      }
+      if (mounted) setState(() => _status = st);
+    } catch (_) {} // badges are a nicety; the listing still works without them
+  }
+
+  Widget _crumbs(_Place h) {
+    final parts = <(String, int)>[];
+    for (var i = 0; i < _stack.length; i++) {
+      final p = _stack[i];
+      final label = i == 0
+          ? 'Home'
+          : p.archive != null && p.path == '.'
+          ? p.archive!.split('/').last
+          : p.path.split('/').last;
+      parts.add((label, i));
+    }
+    final cs = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final (label, i) in parts) ...[
+            if (i > 0) Icon(Icons.chevron_right, size: 18, color: cs.outline),
+            ActionChip(
+              label: Text(label),
+              avatar: i == 0 ? const Icon(Icons.home_outlined, size: 18) : null,
+              backgroundColor: i == parts.length - 1 ? cs.secondaryContainer : null,
+              side: BorderSide.none,
+              onPressed: i == parts.length - 1
+                  ? null
+                  : () {
+                      _stack.removeRange(i + 1, _stack.length);
+                      _entries = null;
+                      _load();
+                    },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _gridTile(FileEntry e) => InkWell(
+    borderRadius: BorderRadius.circular(16),
+    onTap: () => _open(e),
+    onLongPress: () => _menu(e),
+    onSecondaryTap: () => _menu(e),
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+      child: Column(
+        children: [
+          EntryIcon(entry: e, size: 64, status: _status[e.path]),
+          const SizedBox(height: 6),
+          Text(
+            e.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _listTile(FileEntry e) => ListTile(
+    leading: EntryIcon(entry: e, size: 40, status: _status[e.path]),
+    title: Text(e.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+    subtitle: e.dir ? null : Text(fmtBytes(e.size)),
+    onTap: () => _open(e),
+    onLongPress: () => _menu(e),
+    trailing: IconButton(icon: const Icon(Icons.more_vert), tooltip: 'Actions', onPressed: () => _menu(e)),
+  );
 
   @override
   Widget build(BuildContext context) {
     final h = _here;
-    final title = h.archive != null ? '${h.archive!.split('/').last}${h.path == '.' ? '' : '/${h.path}'}' : h.path;
+    final s = AppSettings.instance;
+    final es = _entries;
+    final note = _error.isNotEmpty && (es?.isNotEmpty ?? false)
+        ? 'Showing the saved list: $_error'
+        : h.archive != null
+        ? 'Inside an archive (read-only)'
+        : _free;
+    final Widget body;
+    if (es == null) {
+      body = const Center(child: CircularProgressIndicator());
+    } else if (es.isEmpty) {
+      body = ListView(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(48),
+            child: Column(
+              children: [
+                Icon(Icons.folder_open, size: 64, color: Theme.of(context).colorScheme.outlineVariant),
+                const SizedBox(height: 12),
+                Text(_error.isNotEmpty ? _error : 'This folder is empty', textAlign: TextAlign.center),
+              ],
+            ),
+          ),
+        ],
+      );
+    } else if (s.filesGrid) {
+      body = GridView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 116,
+          mainAxisExtent: 124,
+          crossAxisSpacing: 4,
+          mainAxisSpacing: 4,
+        ),
+        itemCount: es.length,
+        itemBuilder: (_, i) => _gridTile(es[i]),
+      );
+    } else {
+      body = ListView.builder(
+        padding: const EdgeInsets.only(bottom: 24),
+        itemCount: es.length,
+        itemBuilder: (_, i) => _listTile(es[i]),
+      );
+    }
     return PopScope(
       canPop: _stack.length == 1,
       onPopInvokedWithResult: (didPop, _) => didPop ? null : _up(),
       child: Column(
         children: [
-          ListTile(
-            leading: _stack.length > 1
-                ? IconButton(icon: const Icon(Icons.arrow_upward), tooltip: 'Up', onPressed: _up)
-                : const Icon(Icons.storage),
-            title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(
-              _error.isNotEmpty && (_entries?.isNotEmpty ?? false)
-                  ? 'Showing the saved list: $_error'
-                  : h.archive != null
-                  ? 'Inside an archive (read-only)'
-                  : _free,
-            ),
-            trailing: h.archive == null
-                ? IconButton(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 4, 0),
+            child: Row(
+              children: [
+                Expanded(child: _crumbs(h)),
+                if (h.archive == null)
+                  IconButton(
                     icon: const Icon(Icons.create_new_folder_outlined),
                     tooltip: 'New folder',
                     onPressed: () async {
                       final n = await _ask('New folder', '', 'Create');
                       if (n != null && n.isNotEmpty) await _act(() => _api.mkdir(_join(h.path, n)), 'Created');
                     },
-                  )
-                : null,
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: _entries == null
-                ? const Center(child: CircularProgressIndicator())
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.only(bottom: 88),
-                      itemCount: _entries!.isEmpty ? 1 : _entries!.length,
-                      itemBuilder: (_, i) {
-                        if (_entries!.isEmpty) {
-                          return Padding(
-                            padding: const EdgeInsets.all(32),
-                            child: Center(child: Text(_error.isNotEmpty ? _error : 'Empty folder')),
-                          );
-                        }
-                        final e = _entries![i];
-                        return ListTile(
-                          leading: Icon(_icon(e)),
-                          title: Text(e.name, maxLines: 2, overflow: TextOverflow.ellipsis),
-                          subtitle: e.dir ? null : Text(fmtBytes(e.size)),
-                          onTap: () => _open(e),
-                          onLongPress: () => _menu(e),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.more_vert),
-                            tooltip: 'Actions',
-                            onPressed: () => _menu(e),
-                          ),
-                        );
-                      },
-                    ),
                   ),
+                IconButton(
+                  icon: Icon(s.filesGrid ? Icons.view_list_outlined : Icons.grid_view),
+                  tooltip: s.filesGrid ? 'List view' : 'Grid view',
+                  onPressed: () => setState(() => s.filesGrid = !s.filesGrid),
+                ),
+              ],
+            ),
+          ),
+          if (note.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(note, style: Theme.of(context).textTheme.labelSmall),
+              ),
+            ),
+          Expanded(
+            child: RefreshIndicator(onRefresh: _load, child: body),
           ),
         ],
       ),

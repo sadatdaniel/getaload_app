@@ -121,6 +121,8 @@ class _ServerScreenState extends State<ServerScreen> {
     final s = widget.server;
     final status = _drive?['status'];
     return ListView(
+      shrinkWrap: true, // embedded in the Settings list
+      physics: const NeverScrollableScrollPhysics(),
       children: [
         ListTile(title: const Text('Address'), subtitle: Text(s.url)),
         if (_version.isNotEmpty) ListTile(title: const Text('Server version'), subtitle: Text(_version)),

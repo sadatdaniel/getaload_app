@@ -8,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 
 import 'api.dart';
 import 'jobs.dart' show fmtBytes;
+import 'media.dart';
+import 'launch.dart';
 
 class PhoneDownload {
   final String name;
@@ -133,6 +135,7 @@ class _PhoneViewState extends State<PhoneView> {
         for (final f in _files)
           ListTile(
             leading: const Icon(Icons.phone_android),
+            onTap: () => play(context, Playable(id: 'file:${f.path}', title: name(f), url: f.path)),
             title: Text(name(f), maxLines: 2, overflow: TextOverflow.ellipsis),
             subtitle: Text(fmtBytes(f.lengthSync())),
             trailing: IconButton(

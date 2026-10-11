@@ -1,11 +1,12 @@
 // The download queue of one server, with live progress from /v1/events.
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import 'add.dart';
 import 'api.dart';
+import 'launch.dart';
+import 'media.dart';
 
 class JobsView extends StatefulWidget {
   final Server server;
@@ -37,7 +38,6 @@ class _JobsViewState extends State<JobsView> {
     _retry?.cancel();
     _refresh?.cancel();
     _api.close();
-    _link.dispose();
     super.dispose();
   }
 
@@ -66,7 +66,9 @@ class _JobsViewState extends State<JobsView> {
         if (mounted) setState(() => _live = live);
         if (changed) _load();
       },
-      onError: (_) => _reconnect(),
+      onError: (e) => e is ApiError && e.status == 401
+          ? setState(() => _error = e.toString())
+          : _reconnect(), // a dead token: stop retrying
       onDone: _reconnect,
       cancelOnError: true,
     );
@@ -84,6 +86,18 @@ class _JobsViewState extends State<JobsView> {
     try {
       await f();
       await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  // Plays through the job stream, which waits for missing bytes (and fetches torrent pieces under the playhead).
+  Future<void> _playJob(Map<String, dynamic> j) async {
+    try {
+      final url = (await _api.signedJobUrl(j['id'])).toString();
+      final name = (j['name'] as String?)?.isNotEmpty == true ? j['name'] as String : 'Download';
+      final item = Playable(id: 'job:${_api.server.url}:${j['id']}', title: name, url: url, via: _api.server);
+      if (mounted) await play(context, item);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
@@ -112,49 +126,8 @@ class _JobsViewState extends State<JobsView> {
     if (ok == true) await _act(() => _api.call('DELETE', '/v1/jobs/${j['id']}?deleteFiles=$files'));
   }
 
-  final _link = TextEditingController();
-
-  // The only way to put something on the server: queue a download (link, magnet, video page or .torrent).
-  Future<void> _addLink() async {
-    final l = _link.text.trim();
-    if (l.isEmpty) return;
-    await _act(() => _api.add(l));
-    _link.clear();
-  }
-
-  Future<void> _addTorrent() async {
-    final picked = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['torrent']);
-    if (picked.isEmpty) return;
-    final bytes = await picked.first.readAsBytes();
-    if (bytes.isNotEmpty) await _act(() => _api.call('POST', '/v1/jobs', {'torrent': base64Encode(bytes)}));
-  }
-
-  Widget _addBox() => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-    child: Column(
-      children: [
-        TextField(
-          controller: _link,
-          keyboardType: TextInputType.url,
-          onSubmitted: (_) => _addLink(),
-          decoration: InputDecoration(
-            hintText: 'Link, video page or magnet',
-            border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(28))),
-            prefixIcon: const Icon(Icons.link),
-            suffixIcon: IconButton(icon: const Icon(Icons.send), tooltip: 'Download', onPressed: _addLink),
-          ),
-        ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: _addTorrent,
-            icon: const Icon(Icons.upload_file),
-            label: const Text('.torrent file'),
-          ),
-        ),
-      ],
-    ),
-  );
+  // The only way to put something on the server: queue a download (see add.dart). No uploads.
+  final _panel = GlobalKey<AddPanelState>();
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +153,11 @@ class _JobsViewState extends State<JobsView> {
       items = [
         const Padding(
           padding: EdgeInsets.all(32),
-          child: Center(child: Text('No downloads yet. Paste a link above, or copy one and reopen the app.')),
+          child: Center(
+            child: Text(
+              'Nothing downloading. Add a link above, drop .torrent files here, or copy a link and reopen the app.',
+            ),
+          ),
         ),
       ];
     } else {
@@ -188,9 +165,15 @@ class _JobsViewState extends State<JobsView> {
     }
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.only(bottom: 24),
-        children: [_addBox(), const Divider(height: 1), ...items],
+      child: TorrentDropTarget(
+        panel: _panel,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 24),
+          children: [
+            AddPanel(key: _panel, api: _api, onAdded: _load),
+            ...items,
+          ],
+        ),
       ),
     );
   }
@@ -201,38 +184,112 @@ class _JobsViewState extends State<JobsView> {
     final total = (p?['total'] ?? j['total'] ?? 0) as num;
     final state = j['state'] as String? ?? '';
     final paused = j['want'] == 'paused';
+    final cs = Theme.of(context).colorScheme;
     final parts = <String>[
-      state,
-      if (total > 0) '${fmtBytes(done)} / ${fmtBytes(total)}' else if (done > 0) fmtBytes(done),
+      if (total > 0) '${fmtBytes(done)} of ${fmtBytes(total)}' else if (done > 0) fmtBytes(done),
       if (p != null && (p['rate'] ?? 0) > 0) '${fmtBytes(p['rate'])}/s',
       if (p != null && (p['peers'] ?? 0) > 0) '${p['peers']} peers',
       if ((p?['hint'] ?? '') != '') p!['hint'],
       if ((j['error'] ?? '') != '') j['error'],
     ];
-    return ListTile(
-      title: Text(
-        (j['name'] as String?)?.isNotEmpty == true ? j['name'] : j['source'],
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
+    final (IconData kindIcon, Color kindColor) = switch (j['kind']) {
+      'torrent' => (Icons.hub, const Color(0xFF4F8FD6)),
+      'video' => (Icons.smart_display, const Color(0xFFD0605E)),
+      'copy' => (Icons.cloud_upload, const Color(0xFF43A6A0)),
+      _ => (Icons.language, const Color(0xFF8E7CC3)),
+    };
+    final (String label, Color bg, Color fg) = switch (state) {
+      'done' => ('Done', cs.tertiaryContainer, cs.onTertiaryContainer),
+      'seeding' => ('Seeding', cs.tertiaryContainer, cs.onTertiaryContainer),
+      'failed' => ('Failed', cs.errorContainer, cs.onErrorContainer),
+      _ when paused => ('Paused', cs.surfaceContainerHighest, cs.onSurfaceVariant),
+      'queued' => ('Queued', cs.surfaceContainerHighest, cs.onSurfaceVariant),
+      _ => (
+        state.isEmpty ? '?' : '${state[0].toUpperCase()}${state.substring(1)}',
+        cs.primaryContainer,
+        cs.onPrimaryContainer,
       ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (state != 'done' && state != 'failed')
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: LinearProgressIndicator(value: total > 0 ? done / total : null),
+    };
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 4, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: kindColor.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(kindIcon, color: kindColor),
             ),
-          Text(parts.join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis),
-        ],
-      ),
-      trailing: PopupMenuButton<String>(
-        onSelected: (a) => a == 'remove' ? _remove(j) : _act(() => _api.call('POST', '/v1/jobs/${j['id']}/$a')),
-        itemBuilder: (_) => [
-          if (state != 'done')
-            PopupMenuItem(value: paused ? 'resume' : 'pause', child: Text(paused ? 'Resume' : 'Pause')),
-          const PopupMenuItem(value: 'remove', child: Text('Remove')),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    (j['name'] as String?)?.isNotEmpty == true ? j['name'] : j['source'],
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+                        child: Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg)),
+                      ),
+                      if (total > 0 && state != 'done') ...[
+                        const SizedBox(width: 8),
+                        Text('${(done * 100 / total).floor()}%', style: Theme.of(context).textTheme.labelMedium),
+                      ],
+                    ],
+                  ),
+                  if (state != 'done' && state != 'failed' && state != 'seeding')
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: LinearProgressIndicator(
+                        value: total > 0 ? done / total : null,
+                        borderRadius: BorderRadius.circular(4),
+                        minHeight: 6,
+                      ),
+                    ),
+                  if (parts.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        parts.join(' · '),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Actions',
+              onSelected: (a) => switch (a) {
+                'remove' => _remove(j),
+                'play' => _playJob(j),
+                _ => _act(() => _api.call('POST', '/v1/jobs/${j['id']}/$a')),
+              },
+              itemBuilder: (_) => [
+                if (j['kind'] != 'copy' && state != 'failed')
+                  const PopupMenuItem(value: 'play', child: Text('Play (also while downloading)')),
+                if (state != 'done')
+                  PopupMenuItem(value: paused ? 'resume' : 'pause', child: Text(paused ? 'Resume' : 'Pause')),
+                const PopupMenuItem(value: 'remove', child: Text('Remove')),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

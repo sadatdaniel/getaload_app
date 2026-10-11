@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -8,14 +6,17 @@ import 'package:flutter/services.dart';
 import 'api.dart';
 import 'files.dart';
 import 'jobs.dart';
+import 'library.dart';
 import 'pair.dart';
 import 'phone.dart';
-import 'server_screen.dart';
 import 'servers.dart';
+import 'settings.dart';
+import 'settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (kIsWeb) SemanticsBinding.instance.ensureSemantics(); // screen readers (and browser automation) on web
+  await AppSettings.instance.load();
   final servers = Servers();
   await servers.load();
   runApp(App(servers: servers));
@@ -27,37 +28,138 @@ class App extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF3B82F6);
-    return MaterialApp(
-      title: 'download_me_not',
-      theme: _theme(seed, Brightness.light),
-      darkTheme: _theme(seed, Brightness.dark),
-      home: ListenableBuilder(
-        listenable: servers,
-        builder: (_, _) =>
-            servers.current == null ? AddServerScreen(servers: servers, first: true) : Home(servers: servers),
+    const seed = Color(0xFF4F46E5); // indigo
+    final s = AppSettings.instance;
+    return ListenableBuilder(
+      listenable: s,
+      builder: (_, _) => MaterialApp(
+        title: 'download_me_not',
+        theme: _theme(seed, Brightness.light),
+        darkTheme: _theme(seed, Brightness.dark),
+        themeMode: {'dark': ThemeMode.dark, 'system': ThemeMode.system}[s.theme] ?? ThemeMode.light,
+        home: ListenableBuilder(
+          listenable: servers,
+          builder: (_, _) =>
+              servers.current == null ? AddServerScreen(servers: servers, first: true) : Home(servers: servers),
+        ),
       ),
     );
   }
 }
 
-// Material 3 with the expressive color scheme and rounder shapes (Flutter has no M3 Expressive components yet).
+// Tailwind-style tokens: slate grays, indigo accent, white cards with hairline borders, rounded-lg corners.
+class Tw {
+  static const slate50 = Color(0xFFF8FAFC), slate100 = Color(0xFFF1F5F9), slate200 = Color(0xFFE2E8F0);
+  static const slate300 = Color(0xFFCBD5E1), slate400 = Color(0xFF94A3B8), slate500 = Color(0xFF64748B);
+  static const slate700 = Color(0xFF334155), slate800 = Color(0xFF1E293B), slate900 = Color(0xFF0F172A);
+  static const slate950 = Color(0xFF020617);
+  static const indigo100 = Color(0xFFE0E7FF), indigo400 = Color(0xFF818CF8), indigo600 = Color(0xFF4F46E5);
+  static const indigo900 = Color(0xFF312E81);
+  static const emerald100 = Color(0xFFD1FAE5), emerald600 = Color(0xFF059669), emerald800 = Color(0xFF065F46);
+  static const red100 = Color(0xFFFEE2E2), red600 = Color(0xFFDC2626), red800 = Color(0xFF991B1B);
+}
+
 ThemeData _theme(Color seed, Brightness b) {
-  final cs = ColorScheme.fromSeed(
-    seedColor: seed,
-    brightness: b,
-    dynamicSchemeVariant: DynamicSchemeVariant.expressive,
+  final light = b == Brightness.light;
+  final cs = ColorScheme.fromSeed(seedColor: seed, brightness: b).copyWith(
+    primary: light ? Tw.indigo600 : Tw.indigo400,
+    onPrimary: light ? Colors.white : Tw.slate950,
+    primaryContainer: light ? Tw.indigo100 : Tw.indigo900,
+    onPrimaryContainer: light ? Tw.indigo900 : Tw.indigo100,
+    secondaryContainer: light ? Tw.slate100 : Tw.slate800,
+    onSecondaryContainer: light ? Tw.slate900 : Tw.slate100,
+    tertiary: Tw.emerald600,
+    tertiaryContainer: light ? Tw.emerald100 : Tw.emerald800,
+    onTertiaryContainer: light ? Tw.emerald800 : Tw.emerald100,
+    error: Tw.red600,
+    errorContainer: light ? Tw.red100 : Tw.red800,
+    onErrorContainer: light ? Tw.red800 : Tw.red100,
+    surface: light ? Colors.white : Tw.slate900,
+    onSurface: light ? Tw.slate900 : Tw.slate100,
+    onSurfaceVariant: light ? Tw.slate500 : Tw.slate400,
+    surfaceContainerLowest: light ? Tw.slate50 : Tw.slate950,
+    surfaceContainerLow: light ? Colors.white : Tw.slate900,
+    surfaceContainer: light ? Colors.white : Tw.slate900,
+    surfaceContainerHigh: light ? Tw.slate100 : Tw.slate800,
+    surfaceContainerHighest: light ? Tw.slate200 : Tw.slate700,
+    outline: light ? Tw.slate300 : Tw.slate700,
+    outlineVariant: light ? Tw.slate200 : Tw.slate800,
   );
-  return ThemeData(
-    colorScheme: cs,
-    cardTheme: const CardThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(24)))),
-    floatingActionButtonTheme: const FloatingActionButtonThemeData(shape: StadiumBorder()),
-    listTileTheme: const ListTileThemeData(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+  const r8 = BorderRadius.all(Radius.circular(8)), r12 = BorderRadius.all(Radius.circular(12));
+  final base = ThemeData(colorScheme: cs);
+  OutlineInputBorder field(Color c, [double w = 1]) => OutlineInputBorder(
+    borderRadius: r8,
+    borderSide: BorderSide(color: c, width: w),
+  );
+  return base.copyWith(
+    scaffoldBackgroundColor: cs.surfaceContainerLowest,
+    dividerColor: cs.outlineVariant,
+    appBarTheme: AppBarTheme(
+      backgroundColor: cs.surface,
+      surfaceTintColor: Colors.transparent,
+      scrolledUnderElevation: 0,
+      shape: Border(bottom: BorderSide(color: cs.outlineVariant)),
+      titleTextStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: cs.onSurface),
     ),
+    cardTheme: CardThemeData(
+      elevation: 0,
+      color: cs.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: r12,
+        side: BorderSide(color: cs.outlineVariant),
+      ),
+    ),
+    chipTheme: base.chipTheme.copyWith(
+      shape: RoundedRectangleBorder(
+        borderRadius: r8,
+        side: BorderSide(color: cs.outline),
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(shape: const RoundedRectangleBorder(borderRadius: r8)),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        shape: const RoundedRectangleBorder(borderRadius: r8),
+        side: BorderSide(color: cs.outline),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(shape: const RoundedRectangleBorder(borderRadius: r8)),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(shape: RoundedRectangleBorder(borderRadius: r12)),
+    dialogTheme: DialogThemeData(
+      backgroundColor: cs.surface,
+      shape: const RoundedRectangleBorder(borderRadius: r12),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(backgroundColor: cs.surface, surfaceTintColor: Colors.transparent),
+    listTileTheme: const ListTileThemeData(shape: RoundedRectangleBorder(borderRadius: r8)),
     navigationBarTheme: NavigationBarThemeData(
-      indicatorShape: const StadiumBorder(),
-      backgroundColor: cs.surfaceContainer,
+      backgroundColor: cs.surface,
+      indicatorColor: cs.primaryContainer,
+      indicatorShape: const RoundedRectangleBorder(borderRadius: r8),
+      labelTextStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: cs.surface,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      border: field(cs.outline),
+      enabledBorder: field(cs.outline),
+      focusedBorder: field(cs.primary, 2),
+      hintStyle: TextStyle(color: cs.onSurfaceVariant),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        shape: const WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: r8)),
+        side: WidgetStatePropertyAll(BorderSide(color: cs.outline)),
+      ),
+    ),
+    snackBarTheme: const SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: r8),
     ),
   );
 }
@@ -205,70 +307,63 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final s = servers.current!;
-    final wide = MediaQuery.sizeOf(context).width >= 840; // Material's expanded window class
-    final queue = JobsView(key: ValueKey('jobs${s.url}'), server: s);
-    final dests = [
+    // Wide (tablet, desktop, web): a website-style header with links. Narrow (phones): a bottom bar.
+    final wide = MediaQuery.sizeOf(context).width >= 840;
+    const dests = [
+      (Icons.download_outlined, Icons.download, 'Downloads'),
       (Icons.folder_outlined, Icons.folder, 'Files'),
-      if (Api.canDownload) (Icons.phone_android_outlined, Icons.phone_android, 'Phone'),
-      (Icons.dns_outlined, Icons.dns, 'Server'),
+      (Icons.video_library_outlined, Icons.video_library, 'Media'),
+      (Icons.settings_outlined, Icons.settings, 'Settings'),
     ];
-    if (_tab >= dests.length) _tab = 0;
+    final cs = Theme.of(context).colorScheme;
+    final serverButton = TextButton.icon(
+      onPressed: _switcher,
+      icon: const Icon(Icons.dns_outlined, size: 18),
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 220),
+            child: Text(s.name, overflow: TextOverflow.ellipsis),
+          ),
+          const Icon(Icons.expand_more, size: 18),
+        ],
+      ),
+      style: TextButton.styleFrom(foregroundColor: cs.onSurface),
+    );
     return Scaffold(
-      appBar: AppBar(
-        title: InkWell(
-          onTap: _switcher,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+      appBar: wide
+          ? AppBar(
+              automaticallyImplyLeading: false,
+              toolbarHeight: 64,
+              titleSpacing: 24,
+              title: Row(
+                children: [
+                  Icon(Icons.downloading, color: cs.primary),
+                  const SizedBox(width: 8),
+                  const Text('download_me_not'),
+                  const SizedBox(width: 32),
+                  for (final (i, (_, _, label)) in dests.indexed)
+                    _NavLink(label, i == _tab, () => setState(() => _tab = i)),
+                ],
+              ),
+              actions: [serverButton, const SizedBox(width: 16)],
+            )
+          : AppBar(title: serverButton, titleSpacing: 8),
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1200), // readable width on big screens, like a website
+          child: IndexedStack(
+            index: _tab,
             children: [
-              Flexible(child: Text(s.name, overflow: TextOverflow.ellipsis)),
-              const Icon(Icons.arrow_drop_down),
+              DownloadsView(key: ValueKey('jobs${s.url}'), server: s),
+              FilesView(key: ValueKey('files${s.url}'), server: s),
+              MediaView(key: ValueKey('media${s.url}'), servers: servers, server: s),
+              SettingsView(key: ValueKey('set${s.url}'), servers: servers, server: s),
             ],
           ),
         ),
-        actions: [
-          if (!wide)
-            Builder(
-              builder: (c) => IconButton(
-                tooltip: 'Downloads',
-                icon: const Icon(Icons.downloading),
-                onPressed: () => Scaffold.of(c).openEndDrawer(),
-              ),
-            ),
-        ],
-      ),
-      // Phones: the queue is a drawer. Tablets and desktop: a rail on the left and the queue always on the right.
-      endDrawer: wide
-          ? null
-          : Drawer(
-              width: min(400, MediaQuery.sizeOf(context).width * 0.88),
-              child: SafeArea(child: queue),
-            ),
-      body: Row(
-        children: [
-          if (wide) ...[
-            NavigationRail(
-              selectedIndex: _tab,
-              onDestinationSelected: (i) => setState(() => _tab = i),
-              labelType: NavigationRailLabelType.all,
-              destinations: [
-                for (final (icon, sel, label) in dests)
-                  NavigationRailDestination(icon: Icon(icon), selectedIcon: Icon(sel), label: Text(label)),
-              ],
-            ),
-            const VerticalDivider(width: 1),
-          ],
-          Expanded(
-            child: IndexedStack(
-              index: _tab,
-              children: [
-                FilesView(key: ValueKey('files${s.url}'), server: s),
-                if (Api.canDownload) const PhoneView(),
-                ServerScreen(key: ValueKey('srv${s.url}'), servers: servers, server: s),
-              ],
-            ),
-          ),
-          if (wide) ...[const VerticalDivider(width: 1), SizedBox(width: 400, child: queue)],
-        ],
       ),
       bottomNavigationBar: wide
           ? null
@@ -280,15 +375,42 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                   NavigationDestination(icon: Icon(icon), selectedIcon: Icon(sel), label: label),
               ],
             ),
-      floatingActionButton: wide || _tab != 0
-          ? null
-          : Builder(
-              builder: (c) => FloatingActionButton.extended(
-                onPressed: () => Scaffold.of(c).openEndDrawer(),
-                icon: const Icon(Icons.add),
-                label: const Text('Download'),
-              ),
-            ),
+    );
+  }
+}
+
+/// The download queue on the server, and (on Android) what was saved to this phone.
+class DownloadsView extends StatefulWidget {
+  final Server server;
+  const DownloadsView({super.key, required this.server});
+  @override
+  State<DownloadsView> createState() => _DownloadsViewState();
+}
+
+class _DownloadsViewState extends State<DownloadsView> {
+  bool _phone = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final queue = JobsView(server: widget.server);
+    if (!Api.canDownload) return queue;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('On the server'), icon: Icon(Icons.dns_outlined)),
+              ButtonSegment(value: true, label: Text('On this phone'), icon: Icon(Icons.phone_android)),
+            ],
+            selected: {_phone},
+            onSelectionChanged: (v) => setState(() => _phone = v.first),
+          ),
+        ),
+        Expanded(
+          child: IndexedStack(index: _phone ? 1 : 0, children: [queue, const PhoneView()]),
+        ),
+      ],
     );
   }
 }
@@ -335,4 +457,40 @@ class _Sheet extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// A header link like on a website: text, with an underline when it is the current page.
+class _NavLink extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _NavLink(this.label, this.active, this.onTap);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          height: 64,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: active ? cs.primary : Colors.transparent, width: 2)),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+              color: active ? cs.onSurface : cs.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

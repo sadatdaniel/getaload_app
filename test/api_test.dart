@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dmn_app/api.dart';
+import 'package:dmn_app/proxy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -41,6 +42,16 @@ void main() {
     expect(await api.progress().first.timeout(const Duration(seconds: 5)), isA<List>());
     api.close();
     // A wrong pin must be refused.
+    // The playback proxy: a Range request (a player seeking) comes back as 206 over the pinned connection.
+    final files = await Api(s).list('/');
+    final f = files.firstWhere((e) => !e.dir);
+    final local = await LocalProxy.instance.wrap((await Api(s).signedUrl(f)).toString(), s);
+    expect(local, startsWith('http://127.0.0.1:'));
+    final req = await HttpClient().getUrl(Uri.parse(local));
+    req.headers.set('range', 'bytes=1-3');
+    final resp = await req.close();
+    expect(resp.statusCode, 206);
+    expect((await resp.fold<List<int>>([], (a, b) => a..addAll(b))).length, 3);
     final bad = Api(Server(url: s.url, token: s.token, fp: '00' * 32, name: 'x'));
     await expectLater(bad.call('GET', '/v1/health'), throwsA(isA<ApiError>()));
     bad.close();

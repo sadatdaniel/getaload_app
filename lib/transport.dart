@@ -6,16 +6,17 @@ import 'dart:io';
 
 import 'api.dart';
 
+/// An HttpClient that accepts a self-signed certificate only if it is the paired one (empty fp: normal TLS).
+HttpClient pinnedClient(String fp) => HttpClient()
+  ..connectionTimeout = const Duration(seconds: 10)
+  // Called only for certificates the system does not trust (self-signed).
+  ..badCertificateCallback = (cert, host, port) => fp.isNotEmpty && fingerprint(cert.der) == fp;
+
 class Transport {
   final Server server;
   final HttpClient _http;
 
-  Transport(this.server) : _http = _client(server.fp);
-
-  static HttpClient _client(String fp) => HttpClient()
-    ..connectionTimeout = const Duration(seconds: 10)
-    // Called only for certificates the system does not trust (self-signed): accept exactly the paired one.
-    ..badCertificateCallback = (cert, host, port) => fp.isNotEmpty && fingerprint(cert.der) == fp;
+  Transport(this.server) : _http = pinnedClient(server.fp);
 
   void close() => _http.close(force: true);
 

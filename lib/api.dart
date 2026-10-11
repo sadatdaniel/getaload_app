@@ -172,6 +172,12 @@ class Api {
     return _t.download(u, _auth, file, progress);
   }
 
+  /// Token-free link to a download's stream (works while it is still downloading).
+  Future<Uri> signedJobUrl(String id) async {
+    final r = await call('POST', '/v1/jobs/$id/sign');
+    return uri(r['url'] as String);
+  }
+
   static Future<String> probeFingerprint(String url) => Transport.probeFingerprint(url);
   static bool get canDownload => Transport.canDownload;
 }
