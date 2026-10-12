@@ -188,8 +188,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   // Fetches whether add-ons are on for this server (once per server; Settings updates it when toggled).
   void _checkAddons(Server s) {
-    if (_addonsChecked == s.url) return;
-    _addonsChecked = s.url;
+    if (_addonsChecked == s.url + s.token) return; // again after signing in with a new token
+    _addonsChecked = s.url + s.token;
     addonsEnabled.value = false;
     final api = Api(s);
     api
@@ -381,11 +381,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                 child: IndexedStack(
                   index: _tab,
                   children: [
-                    DownloadsView(key: ValueKey('jobs${s.url}'), server: s),
-                    MediaView(key: ValueKey('media${s.url}'), servers: servers, server: s),
-                    FilesView(key: ValueKey('files${s.url}'), server: s),
-                    if (discover) DiscoverView(key: ValueKey('disc${s.url}'), server: s),
-                    SettingsView(key: ValueKey('set${s.url}'), servers: servers, server: s),
+                    DownloadsView(key: ValueKey('jobs${s.url}${s.token.hashCode}'), server: s),
+                    MediaView(key: ValueKey('media${s.url}${s.token.hashCode}'), servers: servers, server: s),
+                    FilesView(key: ValueKey('files${s.url}${s.token.hashCode}'), server: s),
+                    if (discover) DiscoverView(key: ValueKey('disc${s.url}${s.token.hashCode}'), server: s),
+                    SettingsView(key: ValueKey('set${s.url}${s.token.hashCode}'), servers: servers, server: s),
                   ],
                 ),
               ),
