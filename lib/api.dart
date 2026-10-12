@@ -1,5 +1,6 @@
 // Client for the download_me_not /v1 API (contract: api/openapi.json in the server repo).
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
@@ -84,6 +85,38 @@ class FileEntry {
   bool get isVideo =>
       !dir && const {'mp4', 'mkv', 'webm', 'avi', 'mov', 'm4v', 'ts', 'm2ts', 'wmv', 'flv'}.contains(ext);
   bool get isAudio => !dir && const {'mp3', 'flac', 'm4a', 'aac', 'ogg', 'opus', 'wav'}.contains(ext);
+
+  static const textExts = {
+    'txt',
+    'md',
+    'nfo',
+    'log',
+    'srt',
+    'vtt',
+    'ass',
+    'ssa',
+    'json',
+    'xml',
+    'csv',
+    'ini',
+    'conf',
+    'cfg',
+    'yaml',
+    'yml',
+    'sh',
+    'py',
+    'js',
+    'html',
+    'css',
+    'toml',
+    'sfv',
+    'm3u',
+    'cue',
+  };
+  static const imageExts = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'};
+
+  /// Opens in the built-in viewer (text, PDF, image).
+  bool get viewable => !dir && (textExts.contains(ext) || imageExts.contains(ext) || ext == 'pdf');
 }
 
 class Api {
@@ -162,6 +195,16 @@ class Api {
     final q = (r['url'] as String).split('?').last; // exp=..&sig=.. (the server leaves the path unescaped)
     if (e.archive == null) return uri('/v1/raw/${_p(e.path)}?$q');
     return uri('/v1/archive/raw/${_p(e.archive!)}?$q&entry=${_q(e.path)}');
+  }
+
+  /// A server file (or archive entry) in memory, for the built-in viewers (text, PDF, images).
+  Future<Uint8List> fileBytes(FileEntry e) async {
+    final u = e.archive == null
+        ? uri('/v1/raw/${_p(e.path)}')
+        : uri('/v1/archive/raw/${_p(e.archive!)}?entry=${_q(e.path)}');
+    final (status, b) = await _t.bytes(u, _auth);
+    if (status >= 300) throw ApiError(status, 'HTTP $status');
+    return Uint8List.fromList(b);
   }
 
   /// Downloads a server file (or archive entry) to [file] on the phone. Not available on web.

@@ -160,36 +160,54 @@ class SettingsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    // Small controls (switches, icons, short text) always sit on the right. Wide ones (choices, sliders,
+    // buttons) move under the label on narrow screens instead of squeezing the text into a sliver.
+    final small = trailing is Switch || trailing is IconButton || trailing is Text;
+    return LayoutBuilder(
+      builder: (context, box) {
+        final stack = trailing != null && !small && box.maxWidth < 560;
+        final label = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Text(title, style: TextStyle(fontSize: 14.5, color: danger ? cs.error : cs.onSurface)),
+            if (subtitle != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(subtitle!, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+              ),
+          ],
+        );
+        return InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title, style: TextStyle(fontSize: 14.5, color: danger ? cs.error : cs.onSurface)),
-                      if (subtitle != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(subtitle!, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
-                        ),
+                Row(
+                  children: [
+                    Expanded(child: label),
+                    if (trailing != null && !stack) ...[
+                      const SizedBox(width: 12),
+                      // A long value (an address, a peer count) wraps instead of pushing the label off screen.
+                      Flexible(
+                        child: Align(alignment: Alignment.centerRight, child: trailing!),
+                      ),
                     ],
-                  ),
+                    if (onTap != null && trailing == null) Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+                  ],
                 ),
-                if (trailing != null) ...[const SizedBox(width: 12), trailing!],
-                if (onTap != null && trailing == null) Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+                if (stack)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Align(alignment: Alignment.centerLeft, child: trailing!),
+                  ),
+                if (below != null) Padding(padding: const EdgeInsets.only(top: 8), child: below!),
               ],
             ),
-            if (below != null) Padding(padding: const EdgeInsets.only(top: 8), child: below!),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

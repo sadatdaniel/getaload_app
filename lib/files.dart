@@ -12,6 +12,7 @@ import 'phone.dart';
 import 'launch.dart';
 import 'settings.dart';
 import 'ui.dart';
+import 'viewer.dart' deferred as viewer;
 
 class FilesView extends StatefulWidget {
   final Server server;
@@ -114,6 +115,10 @@ class _FilesViewState extends State<FilesView> {
   void _open(FileEntry e) {
     if (e.dir) return _go(_Place(e.path, e.archive));
     if (e.isArchive) return _go(_Place('.', e.path));
+    if (e.viewable) {
+      _view(e);
+      return;
+    }
     if (e.isVideo || e.isAudio) {
       _play(e);
       return;
@@ -163,6 +168,11 @@ class _FilesViewState extends State<FilesView> {
     }
   }
 
+  Future<void> _view(FileEntry e) async {
+    await viewer.loadLibrary();
+    if (mounted) await viewer.openViewer(context, _api, e);
+  }
+
   Future<String?> _ask(String title, String initial, String action) {
     final c = TextEditingController(text: initial);
     return showDialog<String>(
@@ -200,13 +210,14 @@ class _FilesViewState extends State<FilesView> {
       if (e.dir) MenuAction('Open', icon: Icons.folder_open, onTap: () => _open(e)),
       if (e.isArchive) MenuAction('Show contents', icon: Icons.folder_zip_outlined, onTap: () => go('open')),
       if (e.isVideo || e.isAudio) MenuAction('Play', icon: Icons.play_arrow, onTap: () => go('play')),
+      if (e.viewable) MenuAction('Open', icon: Icons.open_in_new, onTap: () => _view(e)),
       if (!e.dir)
         MenuAction(
           Api.canDownload ? 'Download to this phone' : 'Download',
           icon: Icons.download,
           onTap: () => go('download'),
         ),
-      if (!e.dir) MenuAction('Copy stream link', icon: Icons.link, onTap: () => go('link')),
+      if (e.isVideo || e.isAudio) MenuAction('Copy stream link', icon: Icons.link, onTap: () => go('link')),
       if (!inArchive) ...[
         const MenuAction.divider(),
         MenuAction('Rename…', icon: Icons.edit_outlined, onTap: () => go('rename')),

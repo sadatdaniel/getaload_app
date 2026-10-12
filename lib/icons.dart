@@ -65,13 +65,27 @@ class EntryIcon extends StatelessWidget {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final Widget base;
     if (entry.dir) {
-      final (glyph, color) = _folderStyle(entry.name);
-      base = Stack(
-        alignment: const Alignment(0, 0.25),
-        children: [
-          Icon(Icons.folder_rounded, size: size, color: dark ? Color.lerp(color, Colors.black, 0.15) : color),
-          if (glyph != Icons.circle) Icon(glyph, size: size * 0.36, color: Colors.white.withValues(alpha: 0.95)),
-        ],
+      final (glyph, _) = _folderStyle(entry.name);
+      final cs = Theme.of(context).colorScheme;
+      // GNOME (Yaru) look: a grey folder with an accent-coloured tab behind it and a light glyph on the front.
+      base = SizedBox(
+        width: size * 0.92,
+        height: size * 0.78,
+        child: CustomPaint(
+          painter: _GnomeFolder(
+            tab: cs.primary,
+            tab2: Color.lerp(cs.primary, const Color(0xFFE95420), 0.55)!, // towards Ubuntu orange, like Yaru
+            body: dark ? const Color(0xFF6E6E6E) : const Color(0xFF7A7A7A),
+          ),
+          child: glyph == Icons.circle
+              ? null
+              : Padding(
+                  padding: EdgeInsets.only(top: size * 0.2),
+                  child: Center(
+                    child: Icon(glyph, size: size * 0.3, color: Colors.white.withValues(alpha: 0.88)),
+                  ),
+                ),
+        ),
       );
     } else {
       final (glyph, color) = fileStyle(entry);
@@ -162,4 +176,26 @@ class _Badge extends StatelessWidget {
       child: child,
     ),
   );
+}
+
+/// A GNOME/Yaru style folder: the back with a tab in the accent colour (a soft gradient), the front in grey.
+class _GnomeFolder extends CustomPainter {
+  final Color tab, tab2, body;
+  _GnomeFolder({required this.tab, required this.tab2, required this.body});
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    final w = s.width, h = s.height, r = Radius.circular(w * 0.07);
+    final back = Path()
+      ..addRRect(RRect.fromLTRBAndCorners(0, h * 0.06, w, h * 0.7, topLeft: r, topRight: r))
+      ..addRRect(RRect.fromLTRBAndCorners(0, 0, w * 0.42, h * 0.2, topLeft: r, topRight: r));
+    canvas.drawPath(back, Paint()..shader = LinearGradient(colors: [tab, tab2]).createShader(Offset.zero & s));
+    canvas.drawRRect(
+      RRect.fromLTRBAndCorners(0, h * 0.2, w, h, topLeft: r, topRight: r, bottomLeft: r, bottomRight: r),
+      Paint()..color = body,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_GnomeFolder o) => o.tab != tab || o.tab2 != tab2 || o.body != body;
 }

@@ -50,6 +50,15 @@ class Transport {
     return (resp.statusCode, await resp.transform(utf8.decoder).join());
   }
 
+  Future<(int, List<int>)> bytes(Uri u, Map<String, String> headers) async {
+    final resp = await _open('GET', u, headers, null);
+    final b = <int>[];
+    await for (final c in resp) {
+      b.addAll(c);
+    }
+    return (resp.statusCode, b);
+  }
+
   Stream<String> lines(Uri u, Map<String, String> headers) async* {
     final resp = await _open('GET', u, headers, null);
     if (resp.statusCode != 200) throw ApiError(resp.statusCode, 'HTTP ${resp.statusCode}');
