@@ -422,9 +422,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final rows = <(String, String)>[
       (
         'Video',
-        '${g('video-codec').isEmpty ? '?' : g('video-codec').split(' ').first}  '
-            '${st.width ?? g('video-params/w')}x${st.height ?? g('video-params/h')}  '
-            '${n('container-fps').toStringAsFixed(2)} fps',
+        [
+          if (g('video-codec').isNotEmpty) g('video-codec').split(' ').first,
+          '${st.width ?? g('video-params/w')}x${st.height ?? g('video-params/h')}',
+          if (n('container-fps') > 0) '${n('container-fps').toStringAsFixed(2)} fps',
+        ].join('  '),
       ),
       if (_mpv != null) ('Decoder', hw.isEmpty || hw == 'no' ? 'software' : 'hardware ($hw)'),
       if (_mpv != null) ('Bitrate', 'video ${rate(n('video-bitrate'))}  audio ${rate(n('audio-bitrate'))}'),
