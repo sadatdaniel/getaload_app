@@ -94,53 +94,92 @@ class _AddServerScreenState extends State<AddServerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    // A centered card of fixed width, like a sign-in page: fields never stretch across a wide window.
     return Scaffold(
-      appBar: AppBar(title: Text(widget.first ? 'download_me_not' : 'Add server')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (widget.first)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 16),
-              child: Text(
-                'Connect to your server. In its web panel open Settings, "Pair a phone", '
-                'or run "sudo dmn pair" on the server, then scan the code.',
+      appBar: widget.first ? null : AppBar(title: const Text('Add server')),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (widget.first) ...[
+                      Icon(Icons.downloading, size: 40, color: cs.primary),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'download_me_not',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Connect to your server. In its web panel open Settings, "Pair a phone", '
+                        'or run "sudo dmn pair" on the server, then scan the code.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: cs.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                    FilledButton.icon(
+                      onPressed: _busy ? null : _scan,
+                      icon: const Icon(Icons.qr_code_scanner),
+                      label: const Text('Scan QR code'),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : _paste,
+                      icon: const Icon(Icons.content_paste),
+                      label: const Text('Paste pairing link'),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Row(
+                        children: [
+                          const Expanded(child: Divider()),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text('or enter it by hand', style: TextStyle(color: cs.onSurfaceVariant)),
+                          ),
+                          const Expanded(child: Divider()),
+                        ],
+                      ),
+                    ),
+                    TextField(
+                      controller: _url,
+                      keyboardType: TextInputType.url,
+                      autocorrect: false,
+                      decoration: const InputDecoration(
+                        labelText: 'Server address',
+                        hintText: 'https://203.0.113.5:8080',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _token,
+                      autocorrect: false,
+                      obscureText: true,
+                      decoration: const InputDecoration(labelText: 'Token'),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.tonal(onPressed: _busy ? null : _manual, child: const Text('Connect')),
+                    if (_busy) const Padding(padding: EdgeInsets.only(top: 16), child: LinearProgressIndicator()),
+                    if (_error.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: Text(_error, style: TextStyle(color: cs.error)),
+                      ),
+                  ],
+                ),
               ),
             ),
-          FilledButton.icon(
-            onPressed: _busy ? null : _scan,
-            icon: const Icon(Icons.qr_code_scanner),
-            label: const Text('Scan QR code'),
           ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _busy ? null : _paste,
-            icon: const Icon(Icons.content_paste),
-            label: const Text('Paste pairing link'),
-          ),
-          const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Text('Or enter it by hand')),
-          TextField(
-            controller: _url,
-            keyboardType: TextInputType.url,
-            autocorrect: false,
-            decoration: const InputDecoration(labelText: 'Server address', hintText: 'https://203.0.113.5:8080'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _token,
-            autocorrect: false,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'Token'),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.tonal(onPressed: _busy ? null : _manual, child: const Text('Connect')),
-          if (_busy) const Padding(padding: EdgeInsets.only(top: 16), child: LinearProgressIndicator()),
-          if (_error.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: Text(_error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            ),
-        ],
+        ),
       ),
     );
   }

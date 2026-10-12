@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
+import 'jobs.dart' show fmtBytes;
 import 'net.dart' if (dart.library.js_interop) 'net_web.dart';
 import 'servers.dart';
 import 'ui.dart';
@@ -31,6 +32,7 @@ class _ServerScreenState extends State<ServerScreen> {
     super.initState();
     _load();
     _loadPorts();
+    _loadLeftovers();
   }
 
   @override
@@ -110,6 +112,29 @@ class _ServerScreenState extends State<ServerScreen> {
     );
     if (!ok) return;
     await widget.servers.remove(widget.server); // the home screen switches to the next server
+  }
+
+  // ---- storage ----
+
+  Map<String, dynamic>? _leftovers;
+
+  Future<void> _loadLeftovers() async {
+    try {
+      final l = await _api.call('GET', '/v1/cleanup') as Map<String, dynamic>;
+      if (mounted) setState(() => _leftovers = l);
+    } catch (_) {
+      if (mounted) setState(() => _leftovers = {'files': [], 'bytes': 0}); // older server: nothing to offer
+    }
+  }
+
+  Future<void> _cleanup() async {
+    try {
+      final r = await _api.call('POST', '/v1/cleanup') as Map<String, dynamic>;
+      _toast('Freed ${fmtBytes(r['bytes'] ?? 0)}');
+    } catch (e) {
+      _toast(e.toString());
+    }
+    _loadLeftovers();
   }
 
   // ---- ports ----
@@ -220,6 +245,23 @@ class _ServerScreenState extends State<ServerScreen> {
                 trailing: IconButton(onPressed: _loadPorts, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
               ),
             ],
+          ],
+        ),
+        SettingsGroup(
+          title: 'Storage',
+          children: [
+            SettingsRow(
+              title: 'Leftover partial files',
+              subtitle: _leftovers == null
+                  ? 'Checking…'
+                  : _leftovers!['files'].isEmpty
+                  ? 'None. Unfinished downloads that were removed leave nothing behind.'
+                  : '${_leftovers!['files'].length} files, ${fmtBytes(_leftovers!['bytes'] ?? 0)}, '
+                        'from downloads that no longer exist. They cannot be resumed.',
+              trailing: (_leftovers?['files'] as List?)?.isNotEmpty == true
+                  ? OutlinedButton(onPressed: _cleanup, child: const Text('Clean up'))
+                  : null,
+            ),
           ],
         ),
         SettingsGroup(

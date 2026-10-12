@@ -105,7 +105,9 @@ class _JobsViewState extends State<JobsView> {
   }
 
   Future<void> _remove(Map<String, dynamic> j) async {
-    var files = false;
+    // Unfinished: the partial data is useless on its own, so deleting it is the default (like qBittorrent).
+    final st = j['state'];
+    var files = st != 'done' && st != 'seeding';
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(
@@ -115,6 +117,7 @@ class _JobsViewState extends State<JobsView> {
             value: files,
             onChanged: (v) => set(() => files = v ?? false),
             title: const Text('Also delete its files on the server'),
+            subtitle: const Text('Unfinished downloads: the partial data cannot be resumed once removed.'),
             contentPadding: EdgeInsets.zero,
           ),
           actions: [

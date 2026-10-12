@@ -158,7 +158,9 @@ ThemeData _theme(Color seed, Brightness b) {
         visualDensity: VisualDensity.compact,
         shape: const WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: r8)),
         side: WidgetStatePropertyAll(BorderSide(color: cs.outline)),
-        backgroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? cs.primaryContainer : null),
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? cs.primaryContainer : null,
+        ),
         foregroundColor: WidgetStateProperty.resolveWith(
           (s) => s.contains(WidgetState.selected) ? cs.onPrimaryContainer : cs.onSurface,
         ),
@@ -301,8 +303,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     final wide = MediaQuery.sizeOf(context).width >= 840;
     const dests = [
       (Icons.download_outlined, Icons.download, 'Downloads'),
-      (Icons.folder_outlined, Icons.folder, 'Files'),
       (Icons.video_library_outlined, Icons.video_library, 'Media'),
+      (Icons.folder_outlined, Icons.folder, 'Files'),
       (Icons.settings_outlined, Icons.settings, 'Settings'),
     ];
     final cs = Theme.of(context).colorScheme;
@@ -350,8 +352,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             index: _tab,
             children: [
               DownloadsView(key: ValueKey('jobs${s.url}'), server: s),
-              FilesView(key: ValueKey('files${s.url}'), server: s),
               MediaView(key: ValueKey('media${s.url}'), servers: servers, server: s),
+              FilesView(key: ValueKey('files${s.url}'), server: s),
               SettingsView(key: ValueKey('set${s.url}'), servers: servers, server: s),
             ],
           ),
