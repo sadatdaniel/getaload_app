@@ -96,3 +96,53 @@ class AppSettings extends ChangeNotifier {
     await _set('recent', jsonEncode(l.take(30).toList()));
   }
 }
+
+/// How one subtitle line is drawn. Subtitle 1 and subtitle 2 each have their own, so two languages can sit in
+/// different places and looks (e.g. the original at the bottom, a translation at the top).
+class SubStyle {
+  bool top; // anchored to the top edge instead of the bottom
+  double offset; // distance from that edge, as a fraction of the video height (0..0.45)
+  double size; // relative font size (1 = normal)
+  int color; // ARGB
+  String background; // outline, box, none
+  bool bold;
+
+  SubStyle({
+    this.top = false,
+    this.offset = 0.06,
+    this.size = 1,
+    this.color = 0xFFFFFFFF,
+    this.background = 'outline',
+    this.bold = false,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'top': top,
+    'offset': offset,
+    'size': size,
+    'color': color,
+    'background': background,
+    'bold': bold,
+  };
+
+  factory SubStyle.fromJson(Map<String, dynamic> j, SubStyle d) => SubStyle(
+    top: j['top'] ?? d.top,
+    offset: (j['offset'] as num?)?.toDouble() ?? d.offset,
+    size: (j['size'] as num?)?.toDouble() ?? d.size,
+    color: j['color'] ?? d.color,
+    background: j['background'] ?? d.background,
+    bold: j['bold'] ?? d.bold,
+  );
+
+  static SubStyle defaults(int n) =>
+      n == 1 ? SubStyle() : SubStyle(top: true, size: 0.9, color: 0xFFFFE082); // second: top, yellow
+}
+
+extension SubStyles on AppSettings {
+  SubStyle subStyle(int n) {
+    final s = _p.getString('subStyle$n');
+    return s == null ? SubStyle.defaults(n) : SubStyle.fromJson(jsonDecode(s), SubStyle.defaults(n));
+  }
+
+  Future<void> setSubStyle(int n, SubStyle v) => _set('subStyle$n', jsonEncode(v.toJson()));
+}

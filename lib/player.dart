@@ -51,6 +51,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String _hwdec = '';
   double _subDelay = 0, _audioDelay = 0;
   String _secondary = 'no';
+  late final SubStyle _st1 = _s.subStyle(1), _st2 = _s.subStyle(2); // mutated in place, saved on change
+  double _subDelay2 = 0;
+  bool _stats = false; // the stats-for-nerds overlay
+  Map<String, String> _statVals = {};
+  Timer? _statTimer;
   String _error = '';
   Timer? _saver;
 
@@ -76,6 +81,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void dispose() {
     _saver?.cancel();
+    _statTimer?.cancel();
     _save();
     _player.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -191,6 +197,288 @@ class _PlayerScreenState extends State<PlayerScreen> {
     ),
   );
 
+  // ---- subtitles: two lines, each with its own position, look and timing ----
+
+  // Drawn by us (media_kit's own view is hidden) so subtitle 1 and 2 can sit in different places and styles.
+  // If both are put at the same edge and distance, they stack instead of overlapping.
+  Widget _subtitles(List<String> lines) => LayoutBuilder(
+    builder: (c, box) {
+      final h = box.maxHeight;
+      Widget text(String s, SubStyle st) {
+        final fs = (h * 0.045 * st.size * _subScale).clamp(10.0, 72.0);
+        final base = TextStyle(fontSize: fs, height: 1.25, fontWeight: st.bold ? FontWeight.w700 : FontWeight.w500);
+        final fill = Text(
+          s,
+          textAlign: TextAlign.center,
+          style: base.copyWith(color: Color(st.color)),
+        );
+        if (st.background == 'outline') {
+          final stroke = Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = fs * 0.14
+            ..strokeJoin = StrokeJoin.round
+            ..color = Colors.black;
+          return Stack(
+            children: [
+              Text(
+                s,
+                textAlign: TextAlign.center,
+                style: base.copyWith(foreground: stroke),
+              ),
+              fill,
+            ],
+          );
+        }
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: st.background == 'box' ? Colors.black.withValues(alpha: 0.6) : null,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: fill,
+        );
+      }
+
+      final one = lines.isNotEmpty ? lines[0].trim() : '', two = lines.length > 1 ? lines[1].trim() : '';
+      Widget at(SubStyle st, List<Widget> children) => Positioned(
+        left: 24,
+        right: 24,
+        top: st.top ? h * st.offset : null,
+        bottom: st.top ? null : h * st.offset,
+        child: Column(mainAxisSize: MainAxisSize.min, children: children),
+      );
+      final together = _st1.top == _st2.top && (_st1.offset - _st2.offset).abs() < 0.08;
+      return Stack(
+        children: [
+          if (together && one.isNotEmpty && two.isNotEmpty)
+            at(_st1, _st1.top ? [text(one, _st1), text(two, _st2)] : [text(two, _st2), text(one, _st1)])
+          else ...[
+            if (one.isNotEmpty) at(_st1, [text(one, _st1)]),
+            if (two.isNotEmpty) at(_st2, [text(two, _st2)]),
+          ],
+        ],
+      );
+    },
+  );
+
+  void _subStyleDialog(int n) {
+    _popup(
+      'Subtitle $n',
+      (c) => StatefulBuilder(
+        builder: (c, set) {
+          final st = n == 1 ? _st1 : _st2;
+          void apply(VoidCallback f) {
+            setState(f);
+            set(() {});
+            _s.setSubStyle(n, st);
+          }
+
+          Future<void> delay(double d) async {
+            final prop = n == 1 ? 'sub-delay' : 'secondary-sub-delay';
+            setState(() => n == 1 ? _subDelay += d : _subDelay2 += d);
+            set(() {});
+            await _mpv?.setProperty(prop, '${n == 1 ? _subDelay : _subDelay2}');
+          }
+
+          final dl = n == 1 ? _subDelay : _subDelay2;
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _section('Position', [
+                  ChoiceChip(
+                    label: const Text('Bottom'),
+                    selected: !st.top,
+                    onSelected: (_) => apply(() => st.top = false),
+                  ),
+                  ChoiceChip(label: const Text('Top'), selected: st.top, onSelected: (_) => apply(() => st.top = true)),
+                ]),
+                Row(
+                  children: [
+                    const SizedBox(width: 120, child: Text('Distance from edge')),
+                    Expanded(
+                      child: Slider(value: st.offset, max: 0.45, onChanged: (v) => apply(() => st.offset = v)),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    const SizedBox(width: 120, child: Text('Size')),
+                    Expanded(
+                      child: Slider(value: st.size, min: 0.5, max: 2, onChanged: (v) => apply(() => st.size = v)),
+                    ),
+                  ],
+                ),
+                _section('Colour', [
+                  for (final (c, l) in [
+                    (0xFFFFFFFF, 'White'),
+                    (0xFFFFE082, 'Yellow'),
+                    (0xFF80DEEA, 'Cyan'),
+                    (0xFFA5D6A7, 'Green'),
+                  ])
+                    ChoiceChip(
+                      avatar: CircleAvatar(backgroundColor: Color(c), radius: 7),
+                      label: Text(l),
+                      selected: st.color == c,
+                      onSelected: (_) => apply(() => st.color = c),
+                    ),
+                ]),
+                _section('Background', [
+                  for (final (v, l) in [('outline', 'Outline'), ('box', 'Box'), ('none', 'None')])
+                    ChoiceChip(
+                      label: Text(l),
+                      selected: st.background == v,
+                      onSelected: (_) => apply(() => st.background = v),
+                    ),
+                  FilterChip(label: const Text('Bold'), selected: st.bold, onSelected: (v) => apply(() => st.bold = v)),
+                ]),
+                if (_mpv != null) ...[
+                  const SizedBox(height: 8),
+                  _stepper(
+                    'Timing',
+                    '${dl >= 0 ? '+' : ''}${dl.toStringAsFixed(1)} s',
+                    () => delay(-0.1),
+                    () => delay(0.1),
+                  ),
+                  Text(
+                    'Plus shows the subtitle later, minus earlier.',
+                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => apply(() {
+                    final d = SubStyle.defaults(n);
+                    st
+                      ..top = d.top
+                      ..offset = d.offset
+                      ..size = d.size
+                      ..color = d.color
+                      ..background = d.background
+                      ..bold = d.bold;
+                  }),
+                  child: const Text('Reset to default'),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ---- stats for nerds (like YouTube's, or MangoHud above the picture) ----
+
+  static const _statProps = [
+    'video-codec',
+    'hwdec-current',
+    'video-params/w',
+    'video-params/h',
+    'container-fps',
+    'estimated-vf-fps',
+    'video-bitrate',
+    'audio-codec-name',
+    'audio-bitrate',
+    'audio-params/channel-count',
+    'audio-params/samplerate',
+    'frame-drop-count',
+    'decoder-frame-drop-count',
+    'demuxer-cache-duration',
+    'cache-speed',
+    'avsync',
+    'file-format',
+  ];
+
+  void _toggleStats() {
+    setState(() => _stats = !_stats);
+    _statTimer?.cancel();
+    if (_stats) {
+      _pollStats();
+      _statTimer = Timer.periodic(const Duration(seconds: 1), (_) => _pollStats());
+    }
+  }
+
+  Future<void> _pollStats() async {
+    final m = <String, String>{};
+    final mpv = _mpv;
+    if (mpv != null) {
+      for (final p in _statProps) {
+        try {
+          m[p] = await mpv.getProperty(p) as String;
+        } catch (_) {} // not available for this file (e.g. no audio)
+      }
+    }
+    if (mounted) setState(() => _statVals = m);
+  }
+
+  Widget _statsBox() {
+    final v = _statVals, st = _player.state;
+    String g(String k) => v[k] ?? '';
+    double n(String k) => double.tryParse(g(k)) ?? 0;
+    String rate(double bits) =>
+        bits >= 1e6 ? '${(bits / 1e6).toStringAsFixed(2)} Mb/s' : '${(bits / 1e3).round()} kb/s';
+    final hw = g('hwdec-current');
+    final rows = <(String, String)>[
+      (
+        'Video',
+        '${g('video-codec').isEmpty ? '?' : g('video-codec').split(' ').first}  '
+            '${st.width ?? g('video-params/w')}x${st.height ?? g('video-params/h')}  '
+            '${n('container-fps').toStringAsFixed(2)} fps',
+      ),
+      if (_mpv != null) ('Decoder', hw.isEmpty || hw == 'no' ? 'software' : 'hardware ($hw)'),
+      if (_mpv != null) ('Bitrate', 'video ${rate(n('video-bitrate'))}  audio ${rate(n('audio-bitrate'))}'),
+      if (g('audio-codec-name').isNotEmpty)
+        (
+          'Audio',
+          '${g('audio-codec-name')}  ${g('audio-params/channel-count')} ch  ${g('audio-params/samplerate')} Hz',
+        ),
+      if (_mpv != null)
+        (
+          'Dropped',
+          'decoder ${g('decoder-frame-drop-count').isEmpty ? 0 : g('decoder-frame-drop-count')}  '
+              'output ${g('frame-drop-count').isEmpty ? 0 : g('frame-drop-count')}',
+        ),
+      (
+        'Buffer',
+        _mpv != null
+            ? '${n('demuxer-cache-duration').toStringAsFixed(1)} s ahead  ${(n('cache-speed') / 1e6).toStringAsFixed(2)} MB/s in'
+            : '${(st.buffer - st.position).inSeconds} s ahead',
+      ),
+      if (_mpv != null) ('A/V sync', '${(n('avsync') * 1000).toStringAsFixed(0)} ms'),
+      ('Playback', '${st.rate}x  volume ${st.volume.round()}  ${g('file-format')}'),
+      (
+        'Source',
+        _item.via != null
+            ? 'server via ${_item.url.startsWith('https') && _item.via!.fp.isNotEmpty ? 'pinned proxy' : 'direct link'}'
+            : 'this device',
+      ),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(8)),
+      child: DefaultTextStyle(
+        style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5, color: Colors.white, height: 1.45),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final (k, val) in rows)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 72,
+                    child: Text(k, style: const TextStyle(color: Color(0xFF80DEEA))),
+                  ),
+                  Text(val),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // Options open as a centered popup (not an Android-style bottom sheet), on phones and big screens alike.
   Future<void> _popup(String title, WidgetBuilder content) => showDialog(
     context: context,
@@ -244,7 +532,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           onSelected: (_) => _player.setAudioTrack(t).then((_) => set(() {})),
                         ),
                     ]),
-                  _section('Subtitles', [
+                  _section('Subtitle 1', [
                     ChoiceChip(
                       label: const Text('Off'),
                       selected: cur.subtitle.id == 'no',
@@ -254,20 +542,41 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ChoiceChip(
                         label: Text(_label(t)),
                         selected: cur.subtitle.id == t.id,
-                        onSelected: (_) => _player.setSubtitleTrack(t).then((_) => set(() {})),
+                        onSelected: (_) async {
+                          if (_secondary == t.id) {
+                            // The same track can't be both: it moves to subtitle 1 and subtitle 2 turns off.
+                            await _mpv?.setProperty('secondary-sid', 'no');
+                            _secondary = 'no';
+                          }
+                          await _player.setSubtitleTrack(t);
+                          set(() {});
+                        },
                       ),
+                    ActionChip(
+                      avatar: const Icon(Icons.tune, size: 16),
+                      label: const Text('Position, timing, style'),
+                      onPressed: () => _subStyleDialog(1),
+                    ),
                   ]),
                   if (_mpv != null && subs.length > 1)
-                    _section('Second subtitle', [
+                    _section('Subtitle 2 (shown at the same time)', [
                       for (final id in ['no', ...subs.map((t) => t.id)])
                         ChoiceChip(
                           label: Text(id == 'no' ? 'Off' : _label(subs.firstWhere((t) => t.id == id))),
                           selected: _secondary == id,
-                          onSelected: (_) async {
-                            await _mpv.setProperty('secondary-sid', id);
-                            set(() => _secondary = id);
-                          },
+                          // Subtitle 1's track can't be picked again here.
+                          onSelected: id != 'no' && id == cur.subtitle.id
+                              ? null
+                              : (_) async {
+                                  await _mpv.setProperty('secondary-sid', id);
+                                  set(() => _secondary = id);
+                                },
                         ),
+                      ActionChip(
+                        avatar: const Icon(Icons.tune, size: 16),
+                        label: const Text('Position, timing, style'),
+                        onPressed: () => _subStyleDialog(2),
+                      ),
                     ]),
                   if (video.length > 1)
                     _section('Video', [
@@ -408,6 +717,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
         MaterialCustomButton(icon: const Icon(Icons.closed_caption_outlined), onPressed: _tracks),
+        MaterialCustomButton(icon: const Icon(Icons.monitor_heart_outlined), onPressed: _toggleStats),
         MaterialCustomButton(icon: const Icon(Icons.tune), onPressed: _quick),
         MaterialCustomButton(icon: const Icon(Icons.open_in_new), onPressed: _openWith),
       ],
@@ -442,7 +752,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           onPressed: () =>
               setState(() => _fit = {BoxFit.contain: BoxFit.cover, BoxFit.cover: BoxFit.fill}[_fit] ?? BoxFit.contain),
         ),
-        const MaterialFullscreenButton(),
+        // No fullscreen button: this screen is already fullscreen, and media_kit's fullscreen route would lose
+        // our subtitle and stats overlays.
       ],
     );
     return Scaffold(
@@ -460,9 +771,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   controller: _video,
                   fit: _fit,
                   controls: MaterialVideoControls,
-                  subtitleViewConfiguration: SubtitleViewConfiguration(textScaler: TextScaler.linear(_subScale)),
+                  // Hidden: _subtitles draws both lines with their own position and style.
+                  subtitleViewConfiguration: const SubtitleViewConfiguration(visible: false),
                 ),
               ),
+              // Our two subtitle lines (media_kit's own view is hidden), and the stats overlay. Neither takes taps.
+              IgnorePointer(
+                child: StreamBuilder<List<String>>(
+                  stream: _player.stream.subtitle,
+                  initialData: _player.state.subtitle,
+                  builder: (c, snap) => _subtitles(snap.data ?? const []),
+                ),
+              ),
+              if (_stats) Positioned(top: 64, left: 12, child: IgnorePointer(child: _statsBox())),
               if (_error.isNotEmpty)
                 Positioned(
                   left: 16,
@@ -515,6 +836,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       const SingleActivator(LogicalKeyboardKey.bracketRight): () => speed(0.25),
       const SingleActivator(LogicalKeyboardKey.keyC): _tracks,
       const SingleActivator(LogicalKeyboardKey.keyS): _quick,
+      const SingleActivator(LogicalKeyboardKey.keyI): _toggleStats,
       const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.maybePop(context),
     };
   }
