@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
+import 'discover.dart' show addonsEnabled, p2pNote;
 import 'jobs.dart' show fmtBytes;
 import 'net.dart' if (dart.library.js_interop) 'net_web.dart';
 import 'servers.dart';
@@ -33,12 +34,14 @@ class _ServerScreenState extends State<ServerScreen> {
     _load();
     _loadPorts();
     _loadLeftovers();
+    _loadAddons();
   }
 
   @override
   void dispose() {
     _poll?.cancel();
     _api.close();
+    _addonUrl.dispose();
     super.dispose();
   }
 
@@ -114,6 +117,59 @@ class _ServerScreenState extends State<ServerScreen> {
     await widget.servers.remove(widget.server); // the home screen switches to the next server
   }
 
+  // ---- add-ons ----
+
+  Map<String, dynamic>? _addons;
+  final _addonUrl = TextEditingController();
+
+  Future<void> _loadAddons() async {
+    try {
+      final a = await _api.call('GET', '/v1/addons') as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() => _addons = a);
+      addonsEnabled.value = a['enabled'] == true;
+    } catch (_) {} // older server: no add-on support
+  }
+
+  Future<void> _setAddons(bool on) async {
+    try {
+      await _api.call('PUT', '/v1/addons/enabled', {'enabled': on});
+    } catch (e) {
+      _toast(e.toString()); // e.g. this device's token is not admin
+    }
+    _loadAddons();
+  }
+
+  Future<void> _addAddon(String url) async {
+    if (url.trim().isEmpty) return;
+    try {
+      final a = await _api.call('POST', '/v1/addons', {'url': url.trim()});
+      _addonUrl.clear();
+      _toast('Added ${a['manifest']?['name'] ?? 'the add-on'}');
+    } catch (e) {
+      _toast(e.toString());
+    }
+    _loadAddons();
+  }
+
+  Future<void> _toggleAddon(String url, bool on) async {
+    try {
+      await _api.call('PUT', '/v1/addons/state', {'url': url, 'enabled': on});
+    } catch (e) {
+      _toast(e.toString());
+    }
+    _loadAddons();
+  }
+
+  Future<void> _removeAddon(String url) async {
+    try {
+      await _api.call('DELETE', '/v1/addons?url=${Uri.encodeQueryComponent(url)}');
+    } catch (e) {
+      _toast(e.toString());
+    }
+    _loadAddons();
+  }
+
   // ---- storage ----
 
   Map<String, dynamic>? _leftovers;
@@ -135,6 +191,7 @@ class _ServerScreenState extends State<ServerScreen> {
       _toast(e.toString());
     }
     _loadLeftovers();
+    _loadAddons();
   }
 
   // ---- ports ----
@@ -245,6 +302,81 @@ class _ServerScreenState extends State<ServerScreen> {
                 trailing: IconButton(onPressed: _loadPorts, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
               ),
             ],
+          ],
+        ),
+        SettingsGroup(
+          title: 'Add-ons (experimental)',
+          description:
+              'Stremio add-ons add a Discover tab: catalogs, search and sources to watch. None are installed by '
+              'default; you choose which to add and are responsible for what they offer. $p2pNote',
+          children: [
+            SettingsRow(
+              title: 'Use add-ons',
+              subtitle: 'Shows the Discover tab.',
+              trailing: Switch(value: _addons?['enabled'] == true, onChanged: _setAddons),
+            ),
+            for (final a in ((_addons?['addons'] as List?) ?? []).cast<Map<String, dynamic>>())
+              SettingsRow(
+                title: (a['manifest']?['name'] ?? a['url']).toString(),
+                subtitle:
+                    a['error'] ??
+                    [
+                      a['manifest']?['description'] ?? '',
+                      [
+                        'v${a['manifest']?['version'] ?? '?'}',
+                        if (a['manifest']?['behaviorHints']?['p2p'] == true) 'P2P (torrents)',
+                        if (a['manifest']?['behaviorHints']?['adult'] == true) 'adult content',
+                      ].join(' · '),
+                    ].where((x) => x.toString().isNotEmpty).join('\n'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Switch(value: a['enabled'] != false, onChanged: (v) => _toggleAddon(a['url'], v)),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      tooltip: 'Remove',
+                      onPressed: () => _removeAddon(a['url']),
+                    ),
+                  ],
+                ),
+              ),
+            SettingsRow(
+              title: 'Add an add-on',
+              subtitle: 'Paste its manifest address (https://…/manifest.json or stremio://…).',
+              below: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _addonUrl,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(hintText: 'https://example.com/manifest.json'),
+                      onSubmitted: (_) => _addAddon(_addonUrl.text),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(onPressed: () => _addAddon(_addonUrl.text), child: const Text('Add')),
+                ],
+              ),
+            ),
+            SettingsRow(
+              title: 'Suggested',
+              subtitle: 'Official Stremio add-ons for titles and subtitles only (no sources to watch).',
+              below: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  for (final (name, url) in const [
+                    ('Cinemeta (titles)', 'https://v3-cinemeta.strem.io/manifest.json'),
+                    ('OpenSubtitles (subtitles)', 'https://opensubtitles-v3.strem.io/manifest.json'),
+                  ])
+                    ActionChip(
+                      avatar: const Icon(Icons.add, size: 16),
+                      label: Text(name),
+                      onPressed: () => _addAddon(url),
+                    ),
+                ],
+              ),
+            ),
           ],
         ),
         SettingsGroup(

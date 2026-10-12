@@ -1,8 +1,8 @@
 // Client for the download_me_not /v1 API (contract: api/openapi.json in the server repo).
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 
 import 'transport.dart' if (dart.library.js_interop) 'transport_web.dart';
 
@@ -141,7 +141,10 @@ class Api {
         final errs = (e['errors'] as List?)?.map((x) => x['message']).join('; ');
         msg = (errs != null && errs.isNotEmpty) ? errs : (e['detail'] ?? msg);
       } catch (_) {}
-      if (status == 401) msg = 'This server no longer accepts the token. Pair it again.';
+      if (status == 401) {
+        msg = 'This device needs to sign in to this server again.';
+        unauthorized.value = server.url; // Home shows a "Sign in again" banner for this server
+      }
       throw ApiError(status, msg);
     }
     return text.isEmpty ? null : jsonDecode(text);
@@ -219,6 +222,21 @@ class Api {
   Future<Uri> signedJobUrl(String id) async {
     final r = await call('POST', '/v1/jobs/$id/sign');
     return uri(r['url'] as String);
+  }
+
+  /// The server (by URL) that last rejected this device's token; null when all is well.
+  static final unauthorized = ValueNotifier<String?>(null);
+
+  static final _images = <String, Uint8List>{}; // ponytail: simple bound, an LRU if catalogs get huge
+
+  /// An add-on poster or file, fetched by the server and passed through (the app never contacts add-ons).
+  Future<Uint8List> addonFile(String url) async {
+    final hit = _images[url];
+    if (hit != null) return hit;
+    final (status, b) = await _t.bytes(uri('/v1/addons/proxy?url=${_q(url)}'), _auth);
+    if (status >= 300) throw ApiError(status, 'HTTP $status');
+    if (_images.length > 300) _images.clear();
+    return _images[url] = Uint8List.fromList(b);
   }
 
   static Future<String> probeFingerprint(String url) => Transport.probeFingerprint(url);

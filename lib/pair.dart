@@ -1,4 +1,5 @@
 // Adding a server: scan the QR from `dmn pair` / the web panel, paste its dmn://pair link, or type URL + token.
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -9,14 +10,15 @@ import 'servers.dart';
 class AddServerScreen extends StatefulWidget {
   final Servers servers;
   final bool first; // no server yet: show a welcome text instead of a back button
-  const AddServerScreen({super.key, required this.servers, this.first = false});
+  final String? initialUrl; // signing in again to a known server
+  const AddServerScreen({super.key, required this.servers, this.first = false, this.initialUrl});
 
   @override
   State<AddServerScreen> createState() => _AddServerScreenState();
 }
 
 class _AddServerScreenState extends State<AddServerScreen> {
-  final _url = TextEditingController();
+  late final _url = TextEditingController(text: widget.initialUrl ?? '');
   final _token = TextEditingController();
   bool _busy = false;
   String _error = '';
@@ -31,6 +33,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
     try {
       await api.call('GET', '/v1/jobs');
       await widget.servers.add(s);
+      if (Api.unauthorized.value == s.url) Api.unauthorized.value = null;
       if (mounted && !widget.first) Navigator.pop(context);
     } catch (e) {
       setState(() => _error = e.toString());
@@ -126,12 +129,14 @@ class _AddServerScreenState extends State<AddServerScreen> {
                       ),
                       const SizedBox(height: 20),
                     ],
-                    FilledButton.icon(
-                      onPressed: _busy ? null : _scan,
-                      icon: const Icon(Icons.qr_code_scanner),
-                      label: const Text('Scan QR code'),
-                    ),
-                    const SizedBox(height: 8),
+                    // The web build has no QR scanning (that is for pairing a phone); pasting or typing works there.
+                    if (!kIsWeb)
+                      FilledButton.icon(
+                        onPressed: _busy ? null : _scan,
+                        icon: const Icon(Icons.qr_code_scanner),
+                        label: const Text('Scan QR code'),
+                      ),
+                    if (!kIsWeb) const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: _busy ? null : _paste,
                       icon: const Icon(Icons.content_paste),

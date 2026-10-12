@@ -4,6 +4,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
 import 'api.dart';
+import 'discover.dart';
 import 'files.dart';
 import 'jobs.dart';
 import 'library.dart';
@@ -183,18 +184,35 @@ class Home extends StatefulWidget {
 class _HomeState extends State<Home> with WidgetsBindingObserver {
   Servers get servers => widget.servers;
   bool _offering = false;
+  String _addonsChecked = ''; // server whose add-on switch was last fetched
+
+  // Fetches whether add-ons are on for this server (once per server; Settings updates it when toggled).
+  void _checkAddons(Server s) {
+    if (_addonsChecked == s.url) return;
+    _addonsChecked = s.url;
+    addonsEnabled.value = false;
+    final api = Api(s);
+    api
+        .call('GET', '/v1/addons')
+        .then((a) => addonsEnabled.value = a['enabled'] == true, onError: (_) {})
+        .whenComplete(api.close);
+  }
+
+  void _onAddons() => mounted ? setState(() {}) : null;
   int _tab = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    addonsEnabled.addListener(_onAddons);
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkClipboard());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    addonsEnabled.removeListener(_onAddons);
     super.dispose();
   }
 
@@ -301,12 +319,16 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     final s = servers.current!;
     // Wide (tablet, desktop, web): a website-style header with links. Narrow (phones): a bottom bar.
     final wide = MediaQuery.sizeOf(context).width >= 840;
-    const dests = [
+    _checkAddons(s);
+    final discover = addonsEnabled.value; // the Discover tab exists only while add-ons are on
+    final dests = [
       (Icons.download_outlined, Icons.download, 'Downloads'),
       (Icons.video_library_outlined, Icons.video_library, 'Media'),
       (Icons.folder_outlined, Icons.folder, 'Files'),
+      if (discover) (Icons.explore_outlined, Icons.explore, 'Discover'),
       (Icons.settings_outlined, Icons.settings, 'Settings'),
     ];
+    if (_tab >= dests.length) _tab = dests.length - 1;
     final cs = Theme.of(context).colorScheme;
     final serverButton = Builder(
       builder: (b) => TextButton.icon(
@@ -344,20 +366,32 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
               actions: [serverButton, const SizedBox(width: 16)],
             )
           : AppBar(title: serverButton, titleSpacing: 8),
-      body: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1200), // readable width on big screens, like a website
-          child: IndexedStack(
-            index: _tab,
-            children: [
-              DownloadsView(key: ValueKey('jobs${s.url}'), server: s),
-              MediaView(key: ValueKey('media${s.url}'), servers: servers, server: s),
-              FilesView(key: ValueKey('files${s.url}'), server: s),
-              SettingsView(key: ValueKey('set${s.url}'), servers: servers, server: s),
-            ],
+      body: Column(
+        children: [
+          // A rejected token: one banner with a way back in, instead of errors on every screen.
+          ValueListenableBuilder<String?>(
+            valueListenable: Api.unauthorized,
+            builder: (_, url, _) => url == s.url ? _ReauthBanner(servers: servers, server: s) : const SizedBox.shrink(),
           ),
-        ),
+          Expanded(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1200), // readable width on big screens, like a website
+                child: IndexedStack(
+                  index: _tab,
+                  children: [
+                    DownloadsView(key: ValueKey('jobs${s.url}'), server: s),
+                    MediaView(key: ValueKey('media${s.url}'), servers: servers, server: s),
+                    FilesView(key: ValueKey('files${s.url}'), server: s),
+                    if (discover) DiscoverView(key: ValueKey('disc${s.url}'), server: s),
+                    SettingsView(key: ValueKey('set${s.url}'), servers: servers, server: s),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: wide
           ? null
@@ -451,6 +485,61 @@ class _NavLink extends StatelessWidget {
               color: active ? cs.onSurface : cs.onSurfaceVariant,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when the server rejects this device's token (it was replaced or removed on the server). Tokens do not
+/// expire, so this is rare; one tap brings the device back with the server's address already filled in.
+class _ReauthBanner extends StatelessWidget {
+  final Servers servers;
+  final Server server;
+  const _ReauthBanner({required this.servers, required this.server});
+
+  Future<void> _paste(BuildContext context) async {
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+    final s = Server.fromPairLink(text);
+    if (s == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Copy a pairing link first (web panel, Settings, "Pair a phone").')),
+        );
+      }
+      return;
+    }
+    await servers.add(s);
+    Api.unauthorized.value = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+        child: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            Text(
+              '${server.name} no longer accepts this device. Sign in again to continue.',
+              style: TextStyle(color: cs.onErrorContainer),
+            ),
+            TextButton(onPressed: () => _paste(context), child: const Text('Paste pairing link')),
+            TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AddServerScreen(servers: servers, initialUrl: server.url),
+                ),
+              ),
+              child: const Text('Sign in again'),
+            ),
+          ],
         ),
       ),
     );
