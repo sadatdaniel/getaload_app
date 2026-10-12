@@ -5,7 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'media.dart';
 import 'player.dart' deferred as player;
 
-Future<void> play(BuildContext context, Playable item) async {
+Future<void> play(BuildContext context, Playable item, {Playlist? list}) async {
   await player.loadLibrary();
-  if (context.mounted) await player.play(context, item);
+  if (context.mounted) await player.play(context, item, list: list);
 }

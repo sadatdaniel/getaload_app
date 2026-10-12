@@ -91,6 +91,22 @@ class _PhoneViewState extends State<PhoneView> {
     super.dispose();
   }
 
+  // Plays a file saved on this phone; the other media files here become the playlist.
+  void _playLocal(File f) {
+    String name(File x) => x.uri.pathSegments.last;
+    Playable item(File x) => Playable(id: 'file:${x.path}', title: name(x), url: x.path);
+    final media = _files.where((x) {
+      final e = FileEntry(name: name(x), path: x.path);
+      return e.isVideo || e.isAudio;
+    }).toList();
+    final i = media.indexOf(f);
+    play(
+      context,
+      item(f),
+      list: i < 0 ? null : Playlist(length: media.length, index: i, open: (n) async => item(media[n])),
+    );
+  }
+
   Future<void> _list() async {
     final d = await PhoneDownloads.dir();
     final fs = d.listSync().whereType<File>().where((f) => !f.path.endsWith('.part')).toList()
@@ -135,7 +151,7 @@ class _PhoneViewState extends State<PhoneView> {
         for (final f in _files)
           ListTile(
             leading: const Icon(Icons.phone_android),
-            onTap: () => play(context, Playable(id: 'file:${f.path}', title: name(f), url: f.path)),
+            onTap: () => _playLocal(f),
             title: Text(name(f), maxLines: 2, overflow: TextOverflow.ellipsis),
             subtitle: Text(fmtBytes(f.lengthSync())),
             trailing: IconButton(

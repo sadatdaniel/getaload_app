@@ -6,7 +6,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit/media_kit.dart' hide Playable;
+import 'package:media_kit/media_kit.dart' hide Playable, Playlist;
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -16,17 +16,23 @@ import 'settings.dart';
 
 bool _mediaKitReady = false;
 
-Future<void> play(BuildContext context, Playable item) {
+Future<void> play(BuildContext context, Playable item, {Playlist? list}) {
   if (!_mediaKitReady) {
     MediaKit.ensureInitialized(); // here, not in main(), so the player stays out of the first download
     _mediaKitReady = true;
   }
-  return Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: item)));
+  return Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => PlayerScreen(item: item, list: list),
+    ),
+  );
 }
 
 class PlayerScreen extends StatefulWidget {
   final Playable item;
-  const PlayerScreen({super.key, required this.item});
+  final Playlist? list; // the rest of the folder, for previous/next
+  const PlayerScreen({super.key, required this.item, this.list});
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
@@ -51,7 +57,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// mpv itself; null on web, where only basic playback is available.
   // Typed dynamic: the web build of media_kit has no setProperty/command, so they must not be referenced statically.
   dynamic get _mpv => kIsWeb ? null : _player.platform;
-  Playable get _item => widget.item;
+  late Playable _item = widget.item;
+  late int _index = widget.list?.index ?? 0;
 
   @override
   void initState() {
@@ -59,6 +66,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _hwdec = _s.hwdec;
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _player.stream.error.listen((e) => mounted ? setState(() => _error = e) : null);
+    _player.stream.completed.listen((done) {
+      if (done && _s.autoplayNext && widget.list != null && _index + 1 < widget.list!.length) _go(1);
+    });
     _open();
     _saver = Timer.periodic(const Duration(seconds: 5), (_) => _save());
   }
@@ -112,6 +122,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _s.touchRecent(_item.toJson(), pos, dur);
   }
 
+  // Previous or next file of the folder. The current position is saved first, so coming back resumes.
+  Future<void> _go(int delta) async {
+    final list = widget.list;
+    final i = _index + delta;
+    if (list == null || i < 0 || i >= list.length) return;
+    _save();
+    try {
+      final next = await list.open(i);
+      if (!mounted) return;
+      setState(() {
+        _item = next;
+        _index = i;
+        _error = '';
+        _secondary = 'no';
+      });
+      await _open();
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
+  }
+
+  void _volumeBy(double d) => _player.setVolume((_player.state.volume + d).clamp(0, 100));
+
   void _seekBy(int secs) {
     final p = _player.state.position + Duration(seconds: secs);
     _player.seek(p < Duration.zero ? Duration.zero : p);
@@ -158,12 +191,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
     ),
   );
 
+  // Options open as a centered popup (not an Android-style bottom sheet), on phones and big screens alike.
+  Future<void> _popup(String title, WidgetBuilder content) => showDialog(
+    context: context,
+    builder: (c) => Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 620),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(title, style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  ),
+                  IconButton(onPressed: () => Navigator.pop(c), icon: const Icon(Icons.close), tooltip: 'Close'),
+                ],
+              ),
+            ),
+            Flexible(child: content(c)),
+          ],
+        ),
+      ),
+    ),
+  );
+
   void _tracks() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (c) => StatefulBuilder(
+    _popup(
+      'Audio, subtitles and video',
+      (c) => StatefulBuilder(
         builder: (c, set) {
           final tr = _player.state.tracks, cur = _player.state.track;
           final audio = tr.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
@@ -237,11 +297,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   );
 
   void _quick() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (c) => StatefulBuilder(
+    _popup(
+      'Playback',
+      (c) => StatefulBuilder(
         builder: (c, set) {
           final mpv = _mpv;
           void update(VoidCallback f) {
@@ -328,6 +386,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final step = _s.seekStep;
+    final list = widget.list;
     final back = {5: Icons.replay_5, 10: Icons.replay_10, 30: Icons.replay_30}[step] ?? Icons.replay;
     final fwd = {5: Icons.forward_5, 10: Icons.forward_10, 30: Icons.forward_30}[step] ?? Icons.forward;
     final theme = MaterialVideoControlsThemeData(
@@ -342,7 +401,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            _item.title,
+            list == null ? _item.title : '${_item.title}  ·  ${_index + 1} / ${list.length}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: Colors.white),
@@ -354,11 +413,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ],
       primaryButtonBar: [
         const Spacer(flex: 2),
+        if (list != null)
+          MaterialCustomButton(
+            icon: Icon(Icons.skip_previous, color: _index > 0 ? null : Colors.white24),
+            iconSize: 32,
+            onPressed: () => _go(-1),
+          ),
+        const Spacer(),
         MaterialCustomButton(icon: Icon(back), iconSize: 36, onPressed: () => _seekBy(-step)),
         const Spacer(),
         const MaterialPlayOrPauseButton(iconSize: 56),
         const Spacer(),
         MaterialCustomButton(icon: Icon(fwd), iconSize: 36, onPressed: () => _seekBy(step)),
+        const Spacer(),
+        if (list != null)
+          MaterialCustomButton(
+            icon: Icon(Icons.skip_next, color: _index + 1 < list.length ? null : Colors.white24),
+            iconSize: 32,
+            onPressed: () => _go(1),
+          ),
         const Spacer(flex: 2),
       ],
       bottomButtonBar: [
@@ -374,37 +447,75 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          MaterialVideoControlsTheme(
-            normal: theme,
-            fullscreen: theme,
-            child: Video(
-              controller: _video,
-              fit: _fit,
-              controls: MaterialVideoControls,
-              subtitleViewConfiguration: SubtitleViewConfiguration(textScaler: TextScaler.linear(_subScale)),
-            ),
-          ),
-          if (_error.isNotEmpty)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 96,
-              child: Material(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(
-                    "Can't play this: $_error. Try \"Open with\" or the software decoder.",
-                    style: const TextStyle(color: Colors.white),
-                  ),
+      body: CallbackShortcuts(
+        bindings: _shortcuts(step),
+        child: Focus(
+          autofocus: true,
+          child: Stack(
+            children: [
+              MaterialVideoControlsTheme(
+                normal: theme,
+                fullscreen: theme,
+                child: Video(
+                  controller: _video,
+                  fit: _fit,
+                  controls: MaterialVideoControls,
+                  subtitleViewConfiguration: SubtitleViewConfiguration(textScaler: TextScaler.linear(_subScale)),
                 ),
               ),
-            ),
-        ],
+              if (_error.isNotEmpty)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 96,
+                  child: Material(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(
+                        "Can't play this: $_error. Try \"Open with\" or the software decoder.",
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  // Common player keys (YouTube, VLC, mpv): space/k play-pause, arrows/j/l seek, up/down volume, m mute,
+  // n/p next/previous file, [ ] speed, c tracks, s settings, Escape back.
+  Map<ShortcutActivator, VoidCallback> _shortcuts(int step) {
+    double muted = 0;
+    void speed(double d) => _player.setRate((_player.state.rate + d).clamp(0.25, 4.0));
+    return {
+      const SingleActivator(LogicalKeyboardKey.space): _player.playOrPause,
+      const SingleActivator(LogicalKeyboardKey.keyK): _player.playOrPause,
+      const SingleActivator(LogicalKeyboardKey.mediaPlayPause): _player.playOrPause,
+      const SingleActivator(LogicalKeyboardKey.arrowLeft): () => _seekBy(-step),
+      const SingleActivator(LogicalKeyboardKey.arrowRight): () => _seekBy(step),
+      const SingleActivator(LogicalKeyboardKey.keyJ): () => _seekBy(-step),
+      const SingleActivator(LogicalKeyboardKey.keyL): () => _seekBy(step),
+      const SingleActivator(LogicalKeyboardKey.arrowUp): () => _volumeBy(5),
+      const SingleActivator(LogicalKeyboardKey.arrowDown): () => _volumeBy(-5),
+      const SingleActivator(LogicalKeyboardKey.keyM): () {
+        final v = _player.state.volume;
+        _player.setVolume(v > 0 ? 0 : (muted > 0 ? muted : 100));
+        muted = v;
+      },
+      const SingleActivator(LogicalKeyboardKey.keyN): () => _go(1),
+      const SingleActivator(LogicalKeyboardKey.keyP): () => _go(-1),
+      const SingleActivator(LogicalKeyboardKey.mediaTrackNext): () => _go(1),
+      const SingleActivator(LogicalKeyboardKey.mediaTrackPrevious): () => _go(-1),
+      const SingleActivator(LogicalKeyboardKey.bracketLeft): () => speed(-0.25),
+      const SingleActivator(LogicalKeyboardKey.bracketRight): () => speed(0.25),
+      const SingleActivator(LogicalKeyboardKey.keyC): _tracks,
+      const SingleActivator(LogicalKeyboardKey.keyS): _quick,
+      const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.maybePop(context),
+    };
   }
 }

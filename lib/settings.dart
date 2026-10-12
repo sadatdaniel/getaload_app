@@ -50,6 +50,10 @@ class AppSettings extends ChangeNotifier {
   String get theme => _p.getString('theme') ?? 'light';
   set theme(String v) => _set('theme', v);
 
+  /// When a video ends, play the next media file of the same folder.
+  bool get autoplayNext => _p.getBool('autoplayNext') ?? true;
+  set autoplayNext(bool v) => _set('autoplayNext', v);
+
   bool get filesGrid => _p.getBool('filesGrid') ?? true;
   set filesGrid(bool v) => _set('filesGrid', v);
 

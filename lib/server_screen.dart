@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
+import 'net.dart' if (dart.library.js_interop) 'net_web.dart';
 import 'servers.dart';
+import 'ui.dart';
 
 class ServerScreen extends StatefulWidget {
   final Servers servers;
@@ -28,6 +30,7 @@ class _ServerScreenState extends State<ServerScreen> {
   void initState() {
     super.initState();
     _load();
+    _loadPorts();
   }
 
   @override
@@ -98,83 +101,168 @@ class _ServerScreenState extends State<ServerScreen> {
   }
 
   Future<void> _remove() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: Text('Remove ${widget.server.name}?'),
-        content: const Text(
-          'The app forgets this server. Downloads on the server stay. '
-          'Pair again to add it back.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Remove')),
-        ],
+    final ok = await confirm(
+      context,
+      title: 'Remove ${widget.server.name}?',
+      body: const Text('The app forgets this server. Downloads on the server stay. Pair again to add it back.'),
+      action: 'Remove',
+      danger: true,
+    );
+    if (!ok) return;
+    await widget.servers.remove(widget.server); // the home screen switches to the next server
+  }
+
+  // ---- ports ----
+
+  Map<String, dynamic>? _ports;
+  bool _portsLoaded = false;
+  String _probe = '';
+
+  Future<void> _loadPorts() async {
+    try {
+      final p = await _api.call('GET', '/v1/ports') as Map<String, dynamic>;
+      if (mounted) setState(() => _ports = p);
+    } catch (_) {
+      // older servers have no port check
+    } finally {
+      if (mounted) setState(() => _portsLoaded = true);
+    }
+  }
+
+  // The outside view: connect to the torrent port from this device. Only meaningful when this device is not on
+  // the server's own network or tunnel (a 127.0.0.1 or LAN address proves nothing about the internet).
+  Future<void> _testPort() async {
+    final host = Uri.parse(widget.server.url).host;
+    final port = _ports?['torrentPort'] as int? ?? 0;
+    setState(() => _probe = 'Testing…');
+    final ok = await probeTcp(host, port);
+    if (!mounted) return;
+    final local =
+        host == 'localhost' || host.startsWith('127.') || host.startsWith('192.168.') || host.startsWith('10.');
+    setState(
+      () => _probe = ok
+          ? 'Port $port is reachable from this device.'
+                '${local ? ' This device is on the same network or tunnel, so it says nothing about the internet.' : ''}'
+          : 'Port $port is not reachable from this device. Open TCP and UDP $port in the cloud firewall and on the server.',
+    );
+  }
+
+  Widget _verdict(String? v) {
+    final cs = Theme.of(context).colorScheme;
+    final (label, bg, fg) = switch (v) {
+      'open' => ('Open', cs.tertiaryContainer, cs.onTertiaryContainer),
+      'probably-closed' => ('Probably closed', cs.errorContainer, cs.onErrorContainer),
+      'not-running' => ('Not running', cs.surfaceContainerHighest, cs.onSurfaceVariant),
+      _ => ('Unknown', cs.surfaceContainerHighest, cs.onSurfaceVariant),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg),
       ),
     );
-    if (ok != true) return;
-    await widget.servers.remove(widget.server); // the home screen switches to the next server
   }
 
   @override
   Widget build(BuildContext context) {
     final s = widget.server;
     final status = _drive?['status'];
-    return ListView(
-      shrinkWrap: true, // embedded in the Settings list
-      physics: const NeverScrollableScrollPhysics(),
+    final p = _ports;
+    final cs = Theme.of(context).colorScheme;
+    final mono = TextStyle(fontFamily: 'monospace', fontSize: 12.5, color: cs.onSurfaceVariant);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ListTile(title: const Text('Address'), subtitle: Text(s.url)),
-        if (_version.isNotEmpty) ListTile(title: const Text('Server version'), subtitle: Text(_version)),
-        if (s.fp.isNotEmpty)
-          ListTile(
-            title: const Text('Certificate (pinned)'),
-            subtitle: Text(s.fp, maxLines: 2, overflow: TextOverflow.ellipsis),
-          ),
-        ListTile(leading: const Icon(Icons.edit), title: const Text('Rename'), onTap: _rename),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.add_to_drive),
-          title: const Text('Google Drive'),
-          subtitle: Text(
-            _driveError.isNotEmpty
-                ? _driveError
-                : status == null
-                ? 'Checking...'
-                : status == 'ready'
-                ? 'Connected. Finished downloads can be copied there.'
-                : status == 'missing-tool'
-                ? 'The server is missing a helper tool: ${_drive?['reason'] ?? ''}'
-                : 'Not connected',
-          ),
-          trailing: status != null && status != 'missing-tool'
-              ? TextButton(onPressed: _connectDrive, child: Text(status == 'ready' ? 'Reconnect' : 'Connect'))
-              : null,
-        ),
-        if (_signin != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Enter this code on the Google page (it is copied):'),
-                    const SizedBox(height: 8),
-                    SelectableText(_signin!['userCode'] ?? '', style: Theme.of(context).textTheme.headlineMedium),
-                    const SizedBox(height: 8),
-                    const Text('Waiting for approval...'),
-                  ],
-                ),
-              ),
+        SettingsGroup(
+          title: 'Server',
+          children: [
+            SettingsRow(title: 'Name', subtitle: s.name, onTap: _rename),
+            SettingsRow(
+              title: 'Address',
+              trailing: SelectableText(s.url, style: mono),
             ),
-          ),
-        const Divider(),
-        ListTile(
-          leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
-          title: const Text('Remove from this phone'),
-          onTap: _remove,
+            if (_version.isNotEmpty) SettingsRow(title: 'Version', trailing: Text(_version)),
+            if (s.fp.isNotEmpty)
+              SettingsRow(
+                title: 'Certificate',
+                subtitle: 'Pinned SHA-256 fingerprint',
+                below: SelectableText(s.fp, style: mono),
+              ),
+          ],
+        ),
+        SettingsGroup(
+          title: 'Network',
+          description: 'Torrents are faster when other peers can connect to this server.',
+          children: [
+            if (p == null)
+              SettingsRow(
+                title: 'Torrent port',
+                subtitle: _portsLoaded ? 'Update the server to check ports.' : 'Checking…',
+              )
+            else ...[
+              SettingsRow(
+                title: 'Torrent port ${p['torrentPort']}',
+                subtitle: p['hint'],
+                trailing: _verdict(p['verdict']),
+              ),
+              if (p['torrentRunning'] == true)
+                SettingsRow(title: 'Peers', trailing: Text('${p['peers']} connected, ${p['incoming']} came to us')),
+              if (Api.canDownload)
+                SettingsRow(
+                  title: 'Test from this device',
+                  subtitle: _probe.isEmpty ? 'Connects to the port from this phone, e.g. over mobile data.' : _probe,
+                  trailing: OutlinedButton(onPressed: _testPort, child: const Text('Test')),
+                ),
+              SettingsRow(
+                title: 'Check again',
+                trailing: IconButton(onPressed: _loadPorts, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
+              ),
+            ],
+          ],
+        ),
+        SettingsGroup(
+          title: 'Cloud storage',
+          children: [
+            SettingsRow(
+              title: 'Google Drive',
+              subtitle: _driveError.isNotEmpty
+                  ? _driveError
+                  : status == null
+                  ? 'Checking…'
+                  : status == 'ready'
+                  ? 'Connected. Finished downloads can be copied there.'
+                  : status == 'missing-tool'
+                  ? 'The server is missing a helper tool: ${_drive?['reason'] ?? ''}'
+                  : 'Not connected',
+              trailing: status != null && status != 'missing-tool'
+                  ? OutlinedButton(onPressed: _connectDrive, child: Text(status == 'ready' ? 'Reconnect' : 'Connect'))
+                  : null,
+              below: _signin == null
+                  ? null
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Enter this code on the Google page (it is copied):'),
+                        const SizedBox(height: 6),
+                        SelectableText(_signin!['userCode'] ?? '', style: Theme.of(context).textTheme.headlineSmall),
+                        const SizedBox(height: 4),
+                        Text('Waiting for approval…', style: TextStyle(color: cs.onSurfaceVariant)),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+        SettingsGroup(
+          children: [
+            SettingsRow(
+              title: 'Remove this server from the app',
+              subtitle: 'Downloads on the server stay. Pair again to add it back.',
+              danger: true,
+              onTap: _remove,
+            ),
+          ],
         ),
       ],
     );

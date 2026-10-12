@@ -63,10 +63,20 @@ class _MediaViewState extends State<MediaView> {
 
   Future<void> _play(FileEntry e) async {
     try {
-      // The folder listing finds subtitle files next to the video.
+      // The folder listing finds subtitle files next to the video and the rest of the folder for previous/next.
       final siblings = e.archive == null ? await _api.list(_parent(e.path)) : <FileEntry>[];
+      siblings.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      final media = siblings.where((f) => f.isVideo || f.isAudio).toList();
+      final i = media.indexWhere((f) => f.path == e.path);
       final p = await serverPlayable(_api, e, siblings);
-      if (mounted) await play(context, p);
+      if (!mounted) return;
+      await play(
+        context,
+        p,
+        list: i < 0
+            ? null
+            : Playlist(length: media.length, index: i, open: (n) => serverPlayable(_api, media[n], siblings)),
+      );
     } catch (x) {
       _toast(x.toString());
     }
@@ -98,7 +108,7 @@ class _MediaViewState extends State<MediaView> {
   Widget build(BuildContext context) {
     final recent = _s.recent;
     final items = (_items ?? []).where((e) => _query.isEmpty || e.path.toLowerCase().contains(_query)).toList();
-    return RefreshIndicator(
+    final page = RefreshIndicator(
       onRefresh: _load,
       child: ListView(
         padding: const EdgeInsets.only(bottom: 24),
@@ -179,6 +189,25 @@ class _MediaViewState extends State<MediaView> {
             ),
         ],
       ),
+    );
+    if (recent.isEmpty) return page;
+    final last = recent.first;
+    return Stack(
+      children: [
+        page,
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: FloatingActionButton.extended(
+            onPressed: () => _resume(last),
+            icon: const Icon(Icons.play_arrow),
+            label: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 260),
+              child: Text('Continue: ${last['item']['title'] ?? ''}', overflow: TextOverflow.ellipsis),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

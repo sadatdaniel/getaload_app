@@ -81,3 +81,12 @@ Future<Playable> serverPlayable(Api api, FileEntry e, List<FileEntry> siblings) 
     source: {'server': api.server.url, 'path': e.path, 'archive': e.archive ?? ''},
   );
 }
+
+/// The other media of the same folder, for previous/next and "play the next file". Items are built on demand
+/// (signed links expire), so a long folder costs nothing until it is played.
+class Playlist {
+  final int length;
+  final int index;
+  final Future<Playable> Function(int i) open;
+  const Playlist({required this.length, required this.index, required this.open});
+}

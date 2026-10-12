@@ -7,6 +7,7 @@ import 'add.dart';
 import 'api.dart';
 import 'launch.dart';
 import 'media.dart';
+import 'ui.dart';
 
 class JobsView extends StatefulWidget {
   final Server server;
@@ -210,88 +211,126 @@ class _JobsViewState extends State<JobsView> {
         cs.onPrimaryContainer,
       ),
     };
-    return Card(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 4, 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: kindColor.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(14),
+    return ContextMenuArea(
+      onMenu: (at) => _jobMenu(j, at),
+      child: Card(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 4, 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: kindColor.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(kindIcon, color: kindColor),
               ),
-              child: Icon(kindIcon, color: kindColor),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    (j['name'] as String?)?.isNotEmpty == true ? j['name'] : j['source'],
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
-                        child: Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg)),
-                      ),
-                      if (total > 0 && state != 'done') ...[
-                        const SizedBox(width: 8),
-                        Text('${(done * 100 / total).floor()}%', style: Theme.of(context).textTheme.labelMedium),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      (j['name'] as String?)?.isNotEmpty == true ? j['name'] : j['source'],
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+                          child: Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg)),
+                        ),
+                        if (total > 0 && state != 'done') ...[
+                          const SizedBox(width: 8),
+                          Text('${(done * 100 / total).floor()}%', style: Theme.of(context).textTheme.labelMedium),
+                        ],
                       ],
-                    ],
-                  ),
-                  if (state != 'done' && state != 'failed' && state != 'seeding')
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: LinearProgressIndicator(
-                        value: total > 0 ? done / total : null,
-                        borderRadius: BorderRadius.circular(4),
-                        minHeight: 6,
-                      ),
                     ),
-                  if (parts.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        parts.join(' · '),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall,
+                    if (state != 'done' && state != 'failed' && state != 'seeding')
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: LinearProgressIndicator(
+                          value: total > 0 ? done / total : null,
+                          borderRadius: BorderRadius.circular(4),
+                          minHeight: 6,
+                        ),
                       ),
-                    ),
-                ],
+                    if (parts.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          parts.join(' · '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            PopupMenuButton<String>(
-              tooltip: 'Actions',
-              onSelected: (a) => switch (a) {
-                'remove' => _remove(j),
-                'play' => _playJob(j),
-                _ => _act(() => _api.call('POST', '/v1/jobs/${j['id']}/$a')),
-              },
-              itemBuilder: (_) => [
-                if (j['kind'] != 'copy' && state != 'failed')
-                  const PopupMenuItem(value: 'play', child: Text('Play (also while downloading)')),
-                if (state != 'done')
-                  PopupMenuItem(value: paused ? 'resume' : 'pause', child: Text(paused ? 'Resume' : 'Pause')),
-                const PopupMenuItem(value: 'remove', child: Text('Remove')),
-              ],
-            ),
-          ],
+              Builder(
+                builder: (b) => IconButton(
+                  icon: const Icon(Icons.more_vert),
+                  tooltip: 'Actions',
+                  onPressed: () => _jobMenu(j, anchorOf(b)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  // Desktop-style menu for a download: right click, long press or ⋮. The two download orders are tick options
+  // that can be switched while it runs.
+  void _jobMenu(Map<String, dynamic> j, Offset at) {
+    final state = j['state'] as String? ?? '';
+    final paused = j['want'] == 'paused';
+    final id = j['id'];
+    final canMode = (j['kind'] == 'torrent' || j['kind'] == 'web') && state != 'done' && state != 'seeding';
+    Future<void> mode(String m) => _act(() => _api.call('PUT', '/v1/jobs/$id/mode', {'mode': m}));
+    showContextMenu(context, at, title: (j['name'] as String?)?.isNotEmpty == true ? j['name'] : j['source'], [
+      if (j['kind'] != 'copy' && state != 'failed')
+        MenuAction('Play', icon: Icons.play_arrow, onTap: () => _playJob(j)),
+      if (state != 'done')
+        MenuAction(
+          paused ? 'Resume' : 'Pause',
+          icon: paused ? Icons.play_circle_outline : Icons.pause_circle_outline,
+          onTap: () => _act(() => _api.call('POST', '/v1/jobs/$id/${paused ? 'resume' : 'pause'}')),
+        ),
+      if (canMode) ...[
+        const MenuAction.divider(),
+        MenuAction(
+          'Play while downloading (ends first, then in order)',
+          checked: j['mode'] == 'stream',
+          onTap: () => mode('stream'),
+        ),
+        MenuAction(
+          'Standard (fastest for the whole download)',
+          checked: j['mode'] != 'stream',
+          onTap: () => mode('standard'),
+        ),
+      ],
+      if (j['kind'] == 'torrent' && state != 'queued') ...[
+        const MenuAction.divider(),
+        MenuAction(
+          'Verify data',
+          icon: Icons.fact_check_outlined,
+          onTap: () => _act(() => _api.call('POST', '/v1/jobs/$id/recheck')),
+        ),
+      ],
+      const MenuAction.divider(),
+      MenuAction('Remove…', icon: Icons.delete_outline, danger: true, onTap: () => _remove(j)),
+    ]);
   }
 }
 

@@ -12,10 +12,13 @@ import 'phone.dart';
 import 'servers.dart';
 import 'settings.dart';
 import 'settings_screen.dart';
+import 'ui.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (kIsWeb) SemanticsBinding.instance.ensureSemantics(); // screen readers (and browser automation) on web
+  // Right click shows our own menus only, not the browser's.
+  if (kIsWeb) BrowserContextMenu.disableContextMenu();
   await AppSettings.instance.load();
   final servers = Servers();
   await servers.load();
@@ -155,6 +158,10 @@ ThemeData _theme(Color seed, Brightness b) {
         visualDensity: VisualDensity.compact,
         shape: const WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: r8)),
         side: WidgetStatePropertyAll(BorderSide(color: cs.outline)),
+        backgroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? cs.primaryContainer : null),
+        foregroundColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? cs.onPrimaryContainer : cs.onSurface,
+        ),
       ),
     ),
     snackBarTheme: const SnackBarThemeData(
@@ -221,15 +228,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
 
   Future<void> _offerPair(Server s) async {
-    final ok = await showModalBottomSheet<bool>(
-      context: context,
-      builder: (c) => _Sheet(
-        title: 'Add server ${s.name}?',
-        body: Text('The clipboard has a pairing link for ${s.url}.'),
-        action: 'Add',
-      ),
+    final ok = await confirm(
+      context,
+      title: 'Add server ${s.name}?',
+      body: Text('The clipboard has a pairing link for ${s.url}.'),
+      action: 'Add server',
     );
-    if (ok != true) return;
+    if (!ok) return;
     final api = Api(s);
     try {
       await api.call('GET', '/v1/jobs');
@@ -244,64 +249,49 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   Future<void> _offerDownload(String link) async {
     var target = servers.current!;
-    final go = await showModalBottomSheet<bool>(
-      context: context,
-      builder: (c) => StatefulBuilder(
-        builder: (c, set) => _Sheet(
-          title: 'Download this link?',
-          body: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(link, maxLines: 3, overflow: TextOverflow.ellipsis),
-              if (servers.list.length > 1)
-                DropdownButton<String>(
-                  value: target.url,
-                  isExpanded: true,
-                  items: [for (final s in servers.list) DropdownMenuItem(value: s.url, child: Text('on ${s.name}'))],
-                  onChanged: (u) => set(() => target = servers.list.firstWhere((s) => s.url == u)),
-                ),
+    final go = await confirm(
+      context,
+      title: 'Download this link?',
+      body: StatefulBuilder(
+        builder: (c, set) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(link, maxLines: 3, overflow: TextOverflow.ellipsis),
+            if (servers.list.length > 1) ...[
+              const SizedBox(height: 12),
+              DropdownMenu<String>(
+                initialSelection: target.url,
+                label: const Text('Server'),
+                expandedInsets: EdgeInsets.zero,
+                dropdownMenuEntries: [for (final s in servers.list) DropdownMenuEntry(value: s.url, label: s.name)],
+                onSelected: (u) => set(() => target = servers.list.firstWhere((s) => s.url == u)),
+              ),
             ],
-          ),
-          action: 'Download',
+          ],
         ),
       ),
+      action: 'Download',
     );
-    if (go == true) await addDownload(target, link, _toast);
+    if (go) await addDownload(target, link, _toast);
   }
 
   void _toast(String m) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
-  void _switcher() {
-    showModalBottomSheet(
-      context: context,
-      builder: (c) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final s in servers.list)
-              ListTile(
-                leading: Icon(s.url == servers.current!.url ? Icons.radio_button_checked : Icons.radio_button_off),
-                title: Text(s.name),
-                subtitle: Text(s.url),
-                onTap: () {
-                  servers.select(s);
-                  Navigator.pop(c);
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.add),
-              title: const Text('Add server'),
-              onTap: () {
-                Navigator.pop(c);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => AddServerScreen(servers: servers)));
-              },
-            ),
-          ],
-        ),
+  // Server switcher: a dropdown menu under the server button.
+  void _switcher(Offset at) {
+    showContextMenu(context, at, title: 'Servers', [
+      for (final s in servers.list)
+        MenuAction(s.name, checked: s.url == servers.current!.url, onTap: () => servers.select(s)),
+      const MenuAction.divider(),
+      MenuAction(
+        'Add server…',
+        icon: Icons.add,
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddServerScreen(servers: servers))),
       ),
-    );
+    ]);
   }
 
   @override
@@ -316,20 +306,22 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       (Icons.settings_outlined, Icons.settings, 'Settings'),
     ];
     final cs = Theme.of(context).colorScheme;
-    final serverButton = TextButton.icon(
-      onPressed: _switcher,
-      icon: const Icon(Icons.dns_outlined, size: 18),
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 220),
-            child: Text(s.name, overflow: TextOverflow.ellipsis),
-          ),
-          const Icon(Icons.expand_more, size: 18),
-        ],
+    final serverButton = Builder(
+      builder: (b) => TextButton.icon(
+        onPressed: () => _switcher(anchorOf(b)),
+        icon: const Icon(Icons.dns_outlined, size: 18),
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: Text(s.name, overflow: TextOverflow.ellipsis),
+            ),
+            const Icon(Icons.expand_more, size: 18),
+          ],
+        ),
+        style: TextButton.styleFrom(foregroundColor: cs.onSurface),
       ),
-      style: TextButton.styleFrom(foregroundColor: cs.onSurface),
     );
     return Scaffold(
       appBar: wide
@@ -425,38 +417,6 @@ Future<void> addDownload(Server s, String link, void Function(String) toast) asy
   } finally {
     api.close();
   }
-}
-
-class _Sheet extends StatelessWidget {
-  final String title;
-  final Widget body;
-  final String action;
-  const _Sheet({required this.title, required this.body, required this.action});
-
-  @override
-  Widget build(BuildContext context) => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 12),
-          body,
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Ignore')),
-              const SizedBox(width: 8),
-              FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(action)),
-            ],
-          ),
-        ],
-      ),
-    ),
-  );
 }
 
 /// A header link like on a website: text, with an underline when it is the current page.

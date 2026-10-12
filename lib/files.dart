@@ -11,6 +11,7 @@ import 'media.dart';
 import 'phone.dart';
 import 'launch.dart';
 import 'settings.dart';
+import 'ui.dart';
 
 class FilesView extends StatefulWidget {
   final Server server;
@@ -144,9 +145,19 @@ class _FilesViewState extends State<FilesView> {
 
   Future<void> _play(FileEntry e) async {
     try {
-      final live = await _livePlayable(e);
-      final p = live ?? await serverPlayable(_api, e, e.archive == null ? (_entries ?? []) : []);
-      if (mounted) await play(context, p);
+      final entries = _entries ?? [];
+      Future<Playable> build(FileEntry f) async =>
+          await _livePlayable(f) ?? await serverPlayable(_api, f, f.archive == null ? entries : []);
+      // The rest of the folder (same order as shown) becomes the playlist for previous/next.
+      final media = entries.where((f) => f.isVideo || f.isAudio).toList();
+      final i = media.indexWhere((f) => f.path == e.path);
+      final p = await build(e);
+      if (!mounted) return;
+      await play(
+        context,
+        p,
+        list: i < 0 ? null : Playlist(length: media.length, index: i, open: (n) => build(media[n])),
+      );
     } catch (x) {
       _toast(x.toString());
     }
@@ -178,36 +189,37 @@ class _FilesViewState extends State<FilesView> {
     _toast('Downloading ${e.name} to this phone');
   }
 
-  Future<void> _menu(FileEntry e) async {
+  // Where the pointer last went down, so a menu opened by a plain tap appears there.
+  Offset _lastTap = Offset.zero;
+
+  // Desktop-style context menu: right click, long press, the ⋮ button, or a tap on a file nothing else opens.
+  void _menu(FileEntry e, [Offset? at]) {
     final inArchive = e.archive != null;
-    final a = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (c) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                title: Text(e.name, maxLines: 2, overflow: TextOverflow.ellipsis),
-                subtitle: Text(e.dir ? 'Folder' : fmtBytes(e.size)),
-              ),
-              if (e.isArchive) _item(c, 'open', Icons.folder_zip_outlined, 'Show contents'),
-              if (e.isVideo || e.isAudio) _item(c, 'play', Icons.play_arrow, 'Play'),
-              if (!e.dir) _item(c, 'download', Icons.download, Api.canDownload ? 'Download to this phone' : 'Download'),
-              if (!e.dir) _item(c, 'link', Icons.link, 'Copy stream link (6 h)'),
-              if (!inArchive) ...[
-                _item(c, 'rename', Icons.edit_outlined, 'Rename'),
-                _item(c, 'move', Icons.drive_file_move_outlined, 'Move'),
-                _item(c, 'copy', Icons.copy, 'Copy'),
-                _item(c, 'drive', Icons.add_to_drive, 'Copy to Google Drive'),
-                _item(c, 'delete', Icons.delete_outline, 'Delete', danger: true),
-              ],
-            ],
-          ),
+    void go(String a) => _do(e, a);
+    showContextMenu(context, at ?? _lastTap, title: e.name, [
+      if (e.dir) MenuAction('Open', icon: Icons.folder_open, onTap: () => _open(e)),
+      if (e.isArchive) MenuAction('Show contents', icon: Icons.folder_zip_outlined, onTap: () => go('open')),
+      if (e.isVideo || e.isAudio) MenuAction('Play', icon: Icons.play_arrow, onTap: () => go('play')),
+      if (!e.dir)
+        MenuAction(
+          Api.canDownload ? 'Download to this phone' : 'Download',
+          icon: Icons.download,
+          onTap: () => go('download'),
         ),
-      ),
-    );
+      if (!e.dir) MenuAction('Copy stream link', icon: Icons.link, onTap: () => go('link')),
+      if (!inArchive) ...[
+        const MenuAction.divider(),
+        MenuAction('Rename…', icon: Icons.edit_outlined, onTap: () => go('rename')),
+        MenuAction('Move to…', icon: Icons.drive_file_move_outlined, onTap: () => go('move')),
+        MenuAction('Copy to…', icon: Icons.copy, onTap: () => go('copy')),
+        MenuAction('Copy to Google Drive', icon: Icons.add_to_drive, onTap: () => go('drive')),
+        const MenuAction.divider(),
+        MenuAction('Delete', icon: Icons.delete_outline, danger: true, onTap: () => go('delete')),
+      ],
+    ]);
+  }
+
+  Future<void> _do(FileEntry e, String a) async {
     switch (a) {
       case 'open':
         _open(e);
@@ -241,32 +253,17 @@ class _FilesViewState extends State<FilesView> {
         await _act(() => _api.toDrive(e.path), 'Copy to Drive queued (see Downloads)');
       case 'delete':
         if (!mounted) return;
-        final ok = await showDialog<bool>(
-          context: context,
-          builder: (d) => AlertDialog(
-            title: Text('Delete ${e.name}?'),
-            content: Text(
-              e.dir
-                  ? 'The folder and everything in it is deleted on the server.'
-                  : 'The file is deleted on the server.',
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete')),
-            ],
+        final ok = await confirm(
+          context,
+          title: 'Delete ${e.name}?',
+          body: Text(
+            e.dir ? 'The folder and everything in it is deleted on the server.' : 'The file is deleted on the server.',
           ),
+          action: 'Delete',
+          danger: true,
         );
-        if (ok == true) await _act(() => _api.delete(e.path), 'Deleted');
+        if (ok) await _act(() => _api.delete(e.path), 'Deleted');
     }
-  }
-
-  Widget _item(BuildContext c, String v, IconData i, String t, {bool danger = false}) {
-    final color = danger ? Theme.of(c).colorScheme.error : null;
-    return ListTile(
-      leading: Icon(i, color: color),
-      title: Text(t, style: TextStyle(color: color)),
-      onTap: () => Navigator.pop(c, v),
-    );
   }
 
   // Badges from the job list: still downloading, or copied to a cloud. Keyed by server path.
@@ -328,36 +325,46 @@ class _FilesViewState extends State<FilesView> {
     );
   }
 
-  Widget _gridTile(FileEntry e) => InkWell(
-    borderRadius: BorderRadius.circular(16),
-    onTap: () => _open(e),
-    onLongPress: () => _menu(e),
-    onSecondaryTap: () => _menu(e),
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
-      child: Column(
-        children: [
-          EntryIcon(entry: e, size: 64, status: _status[e.path]),
-          const SizedBox(height: 6),
-          Text(
-            e.name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
+  Widget _gridTile(FileEntry e) => ContextMenuArea(
+    onMenu: (at) => _menu(e, at),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTapDown: (d) => _lastTap = d.globalPosition,
+      onTap: () => _open(e),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+        child: Column(
+          children: [
+            EntryIcon(entry: e, size: 64, status: _status[e.path]),
+            const SizedBox(height: 6),
+            Text(
+              e.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
       ),
     ),
   );
 
-  Widget _listTile(FileEntry e) => ListTile(
-    leading: EntryIcon(entry: e, size: 40, status: _status[e.path]),
-    title: Text(e.name, maxLines: 2, overflow: TextOverflow.ellipsis),
-    subtitle: e.dir ? null : Text(fmtBytes(e.size)),
-    onTap: () => _open(e),
-    onLongPress: () => _menu(e),
-    trailing: IconButton(icon: const Icon(Icons.more_vert), tooltip: 'Actions', onPressed: () => _menu(e)),
+  Widget _listTile(FileEntry e) => ContextMenuArea(
+    onMenu: (at) => _menu(e, at),
+    child: InkWell(
+      onTapDown: (d) => _lastTap = d.globalPosition,
+      onTap: () => _open(e),
+      child: ListTile(
+        leading: EntryIcon(entry: e, size: 40, status: _status[e.path]),
+        title: Text(e.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+        subtitle: e.dir ? null : Text(fmtBytes(e.size)),
+        trailing: Builder(
+          builder: (b) =>
+              IconButton(icon: const Icon(Icons.more_vert), tooltip: 'Actions', onPressed: () => _menu(e, anchorOf(b))),
+        ),
+      ),
+    ),
   );
 
   @override
