@@ -66,12 +66,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late Playable _item = widget.item;
   late int _index = widget.list?.index ?? 0;
 
+  // Phones: landscape videos turn the screen to landscape (also with auto-rotate off), like other players; the
+  // rotate button overrides it for this session. Leaving the player gives the app its normal orientation back.
+  bool _landscape = false, _rotatedByHand = false;
+
+  void _orient(bool landscape) {
+    if (kIsWeb) return;
+    _landscape = landscape;
+    SystemChrome.setPreferredOrientations(
+      landscape ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight] : [DeviceOrientation.portraitUp],
+    );
+  }
+
+  void _followVideo(_) {
+    final w = _player.state.width, h = _player.state.height;
+    if (!_rotatedByHand && w != null && h != null && w > 0 && h > 0) _orient(w > h);
+  }
+
   @override
   void initState() {
     super.initState();
     _hwdec = _s.hwdec;
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _player.stream.error.listen((e) => mounted ? setState(() => _error = e) : null);
+    _player.stream.width.listen(_followVideo);
+    _player.stream.height.listen(_followVideo);
     _player.stream.completed.listen((done) {
       if (done && _s.autoplayNext && widget.list != null && _index + 1 < widget.list!.length) _go(1);
     });
@@ -85,6 +104,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _statTimer?.cancel();
     _save(force: true);
     _player.dispose();
+    if (!kIsWeb) SystemChrome.setPreferredOrientations([]); // back to the app's normal orientation
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
@@ -747,6 +767,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       bottomButtonBar: [
         const MaterialPositionIndicator(),
         const Spacer(),
+        if (!kIsWeb)
+          MaterialCustomButton(
+            icon: const Icon(Icons.screen_rotation),
+            onPressed: () {
+              _rotatedByHand = true;
+              _orient(!_landscape);
+            },
+          ),
         MaterialCustomButton(
           icon: const Icon(Icons.aspect_ratio),
           onPressed: () =>
@@ -758,50 +786,53 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
     return Scaffold(
       backgroundColor: Colors.black,
-      body: CallbackShortcuts(
-        bindings: _shortcuts(step),
-        child: Focus(
-          autofocus: true,
-          child: Stack(
-            children: [
-              MaterialVideoControlsTheme(
-                normal: theme,
-                fullscreen: theme,
-                child: Video(
-                  controller: _video,
-                  fit: _fit,
-                  controls: MaterialVideoControls,
-                  // Hidden: _subtitles draws both lines with their own position and style.
-                  subtitleViewConfiguration: const SubtitleViewConfiguration(visible: false),
+      // Controls, subtitles and overlays stay clear of the notch and rounded corners (landscape especially).
+      body: SafeArea(
+        child: CallbackShortcuts(
+          bindings: _shortcuts(step),
+          child: Focus(
+            autofocus: true,
+            child: Stack(
+              children: [
+                MaterialVideoControlsTheme(
+                  normal: theme,
+                  fullscreen: theme,
+                  child: Video(
+                    controller: _video,
+                    fit: _fit,
+                    controls: MaterialVideoControls,
+                    // Hidden: _subtitles draws both lines with their own position and style.
+                    subtitleViewConfiguration: const SubtitleViewConfiguration(visible: false),
+                  ),
                 ),
-              ),
-              // Our two subtitle lines (media_kit's own view is hidden), and the stats overlay. Neither takes taps.
-              IgnorePointer(
-                child: StreamBuilder<List<String>>(
-                  stream: _player.stream.subtitle,
-                  initialData: _player.state.subtitle,
-                  builder: (c, snap) => _subtitles(snap.data ?? const []),
+                // Our two subtitle lines (media_kit's own view is hidden), and the stats overlay. Neither takes taps.
+                IgnorePointer(
+                  child: StreamBuilder<List<String>>(
+                    stream: _player.stream.subtitle,
+                    initialData: _player.state.subtitle,
+                    builder: (c, snap) => _subtitles(snap.data ?? const []),
+                  ),
                 ),
-              ),
-              if (_stats) Positioned(top: 64, left: 12, child: IgnorePointer(child: _statsBox())),
-              if (_error.isNotEmpty)
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 96,
-                  child: Material(
-                    color: Colors.black87,
-                    borderRadius: BorderRadius.circular(16),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(
-                        "Can't play this: $_error. Try \"Open with\" or the software decoder.",
-                        style: const TextStyle(color: Colors.white),
+                if (_stats) Positioned(top: 64, left: 12, child: IgnorePointer(child: _statsBox())),
+                if (_error.isNotEmpty)
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: 96,
+                    child: Material(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(
+                          "Can't play this: $_error. Try \"Open with\" or the software decoder.",
+                          style: const TextStyle(color: Colors.white),
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

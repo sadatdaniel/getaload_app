@@ -92,17 +92,6 @@ class SettingsView extends StatelessWidget {
                     subtitle: 'When a video ends, continue with the next one.',
                     trailing: Switch(value: s.autoplayNext, onChanged: (v) => s.autoplayNext = v),
                   ),
-                  SettingsRow(
-                    title: 'Preferred languages',
-                    subtitle: 'Audio and subtitles, in order, e.g. en,de',
-                    trailing: SizedBox(
-                      width: 160,
-                      child: TextFormField(
-                        initialValue: s.preferredLanguages,
-                        onFieldSubmitted: (v) => s.preferredLanguages = v.trim(),
-                      ),
-                    ),
-                  ),
                 ],
               ),
               SettingsGroup(

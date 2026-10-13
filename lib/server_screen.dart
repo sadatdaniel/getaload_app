@@ -202,6 +202,30 @@ class _ServerScreenState extends State<ServerScreen> {
     _loadAddons();
   }
 
+  Future<void> _addonMenu(Map<String, dynamic> a) async {
+    final phone = a['phone'] == true;
+    final pick = await showDialog<String>(
+      context: context,
+      builder: (c) => SimpleDialog(
+        title: Text((a['manifest']?['name'] ?? a['url']).toString()),
+        children: [
+          if (a['manifest']?['description'] != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+              child: Text(a['manifest']['description'].toString(), style: const TextStyle(fontSize: 13)),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(c, 'phone'),
+            child: Text(phone ? 'Let the server ask it' : 'Ask it from this phone (if it blocks the server)'),
+          ),
+          SimpleDialogOption(onPressed: () => Navigator.pop(c, 'remove'), child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (pick == 'phone') await _setPhone(a['url'], !phone);
+    if (pick == 'remove') await _removeAddon(a['url']);
+  }
+
   Future<void> _toggleAddon(String url, bool on) async {
     try {
       await _api.call('PUT', '/v1/addons/state', {'url': url, 'enabled': on});
@@ -359,88 +383,74 @@ class _ServerScreenState extends State<ServerScreen> {
         if (admin)
           SettingsGroup(
             title: 'Add-ons (experimental)',
-            description:
-                'Stremio add-ons add a Discover tab: catalogs, search and sources to watch. None are installed by '
-                'default; you choose which to add and are responsible for what they offer. $p2pNote',
+            description: _addons?['enabled'] == true
+                ? 'Stremio add-ons add a Discover tab: catalogs, search and sources to watch. You choose which to add '
+                      'and are responsible for what they offer. Tap an add-on for more. $p2pNote'
+                : null,
             children: [
               SettingsRow(
                 title: 'Use add-ons',
                 subtitle: 'Shows the Discover tab.',
                 trailing: Switch(value: _addons?['enabled'] == true, onChanged: _setAddons),
               ),
-              for (final a in ((_addons?['addons'] as List?) ?? []).cast<Map<String, dynamic>>())
-                SettingsRow(
-                  title: (a['manifest']?['name'] ?? a['url']).toString(),
-                  subtitle:
-                      a['error'] ??
-                      [
-                        a['manifest']?['description'] ?? '',
+              if (_addons?['enabled'] == true)
+                for (final a in ((_addons?['addons'] as List?) ?? []).cast<Map<String, dynamic>>())
+                  // One compact row: name, version and tags, the switch; tapping it offers the rest.
+                  SettingsRow(
+                    title: (a['manifest']?['name'] ?? a['url']).toString(),
+                    subtitle:
+                        a['error'] ??
                         [
                           'v${a['manifest']?['version'] ?? '?'}',
-                          if (a['manifest']?['behaviorHints']?['p2p'] == true) 'P2P (torrents)',
-                          if (a['manifest']?['behaviorHints']?['adult'] == true) 'adult content',
+                          if (a['manifest']?['behaviorHints']?['p2p'] == true) 'torrents',
+                          if (a['manifest']?['behaviorHints']?['adult'] == true) 'adult',
                           if (a['phone'] == true) 'asked from this phone',
                         ].join(' · '),
-                      ].where((x) => x.toString().isNotEmpty).join('\n'),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
+                    onTap: () => _addonMenu(a),
+                    trailing: Switch(value: a['enabled'] != false, onChanged: (v) => _toggleAddon(a['url'], v)),
+                  ),
+              if (_addons?['enabled'] == true)
+                SettingsRow(
+                  title: 'Add an add-on',
+                  subtitle: 'Paste its manifest address (https://…/manifest.json or stremio://…).',
+                  below: FieldWithButton(
+                    field: TextField(
+                      controller: _addonUrl,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(hintText: 'https://example.com/manifest.json'),
+                      onSubmitted: (_) => _addAddon(_addonUrl.text),
+                    ),
+                    button: FilledButton(onPressed: () => _addAddon(_addonUrl.text), child: const Text('Add')),
+                  ),
+                ),
+              if (_addons?['enabled'] == true)
+                SettingsRow(
+                  title: 'Suggested',
+                  subtitle: 'Official Stremio add-ons for titles and subtitles only (no sources to watch).',
+                  below: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
                     children: [
-                      IconButton(
-                        icon: Icon(a['phone'] == true ? Icons.smartphone : Icons.dns_outlined),
-                        tooltip: a['phone'] == true
-                            ? 'Asked from this phone. Tap to let the server ask it again'
-                            : 'Asked by the server. Tap to ask it from this phone (for add-ons that block the server)',
-                        onPressed: () => _setPhone(a['url'], a['phone'] != true),
-                      ),
-                      Switch(value: a['enabled'] != false, onChanged: (v) => _toggleAddon(a['url'], v)),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: 'Remove',
-                        onPressed: () => _removeAddon(a['url']),
-                      ),
+                      for (final (name, url) in const [
+                        ('Cinemeta (titles)', 'https://v3-cinemeta.strem.io/manifest.json'),
+                        ('OpenSubtitles (subtitles)', 'https://opensubtitles-v3.strem.io/manifest.json'),
+                      ])
+                        // Installed ones show a check and can't be added twice (the server keeps the base URL).
+                        if (installed.contains(url.replaceFirst(RegExp(r'/manifest\.json$'), '')))
+                          ActionChip(
+                            avatar: Icon(Icons.check, size: 16, color: cs.primary),
+                            label: Text('$name · added'),
+                            onPressed: null,
+                          )
+                        else
+                          ActionChip(
+                            avatar: const Icon(Icons.add, size: 16),
+                            label: Text(name),
+                            onPressed: () => _addAddon(url),
+                          ),
                     ],
                   ),
                 ),
-              SettingsRow(
-                title: 'Add an add-on',
-                subtitle: 'Paste its manifest address (https://…/manifest.json or stremio://…).',
-                below: FieldWithButton(
-                  field: TextField(
-                    controller: _addonUrl,
-                    keyboardType: TextInputType.url,
-                    decoration: const InputDecoration(hintText: 'https://example.com/manifest.json'),
-                    onSubmitted: (_) => _addAddon(_addonUrl.text),
-                  ),
-                  button: FilledButton(onPressed: () => _addAddon(_addonUrl.text), child: const Text('Add')),
-                ),
-              ),
-              SettingsRow(
-                title: 'Suggested',
-                subtitle: 'Official Stremio add-ons for titles and subtitles only (no sources to watch).',
-                below: Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    for (final (name, url) in const [
-                      ('Cinemeta (titles)', 'https://v3-cinemeta.strem.io/manifest.json'),
-                      ('OpenSubtitles (subtitles)', 'https://opensubtitles-v3.strem.io/manifest.json'),
-                    ])
-                      // Installed ones show a check and can't be added twice (the server keeps the base URL).
-                      if (installed.contains(url.replaceFirst(RegExp(r'/manifest\.json$'), '')))
-                        ActionChip(
-                          avatar: Icon(Icons.check, size: 16, color: cs.primary),
-                          label: Text('$name · added'),
-                          onPressed: null,
-                        )
-                      else
-                        ActionChip(
-                          avatar: const Icon(Icons.add, size: 16),
-                          label: Text(name),
-                          onPressed: () => _addAddon(url),
-                        ),
-                  ],
-                ),
-              ),
             ],
           ),
         CookieSettings(key: ValueKey('ck${s.url}'), server: s),

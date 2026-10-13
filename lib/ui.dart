@@ -219,12 +219,40 @@ class Choice<T> extends StatelessWidget {
   final ValueChanged<T> onChanged;
   const Choice({super.key, required this.options, required this.value, required this.onChanged});
 
+  // Joined buttons when the labels fit on one line; otherwise chips that wrap, so words never break mid-word
+  // (narrow phones, large system font).
   @override
-  Widget build(BuildContext context) => SegmentedButton<T>(
-    showSelectedIcon: false,
-    segments: [for (final (v, l) in options) ButtonSegment(value: v, label: Text(l))],
-    selected: {value},
-    onSelectionChanged: (s) => onChanged(s.first),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final style = Theme.of(context).textTheme.labelLarge; // what SegmentedButton labels use
+      final scaler = MediaQuery.textScalerOf(context);
+      final need = options.fold<double>(0, (sum, o) {
+        final tp = TextPainter(
+          text: TextSpan(text: o.$2, style: style),
+          textScaler: scaler,
+          textDirection: TextDirection.ltr,
+        )..layout();
+        return sum + tp.width + 40; // the segment's padding and border
+      });
+      if (need <= box.maxWidth) {
+        return SegmentedButton<T>(
+          showSelectedIcon: false,
+          segments: [
+            for (final (v, l) in options) ButtonSegment(value: v, label: Text(l, maxLines: 1, softWrap: false)),
+          ],
+          selected: {value},
+          onSelectionChanged: (s) => onChanged(s.first),
+        );
+      }
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final (v, l) in options)
+            ChoiceChip(label: Text(l), selected: v == value, showCheckmark: false, onSelected: (_) => onChanged(v)),
+        ],
+      );
+    },
   );
 }
 
