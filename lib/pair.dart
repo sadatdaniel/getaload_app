@@ -124,7 +124,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
             title: Text(saved == null ? 'Self-signed certificate' : 'The certificate changed'),
             content: SelectableText(
               'Fingerprint (SHA-256):\n\n$fp\n\n'
-              'Compare it with the one shown by the installer, "dmn pair" or the web panel. Trust this server?',
+              'Compare it with the one shown by the installer or "sudo dmn connect". Trust this server?',
             ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
@@ -193,8 +193,8 @@ class _AddServerScreenState extends State<AddServerScreen> {
                       const SizedBox(height: 8),
                       Text(
                         t == null
-                            ? 'Enter your server\'s address, or scan the code that the installer, "sudo dmn pair" '
-                                  'or the web panel (Settings, "Pair a phone") shows.'
+                            ? 'Enter your server\'s address, e.g. https://203.0.113.5:8080. '
+                                  '"sudo dmn connect" on the server shows it.'
                             : _users.isEmpty
                             ? 'This server has no users yet. Enter a token from "dmn setup" or "dmn pair".'
                             : 'Who is signing in?',

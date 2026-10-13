@@ -56,7 +56,7 @@ class Server {
   }
 
   static String? normalizeUrl(String s) {
-    s = s.trim();
+    s = s.replaceAll(RegExp(r'\s'), ''); // phone keyboards add spaces after "https://"
     if (s.isEmpty) return null;
     if (!s.contains('://')) s = 'https://$s';
     final u = Uri.tryParse(s);

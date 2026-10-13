@@ -88,7 +88,7 @@ class Transport {
   }
 
   /// For a server typed in by hand: the fingerprint of its certificate if the system does not trust it
-  /// (self-signed), '' if it does or if it is plain HTTP. The user compares it with `dmn pair`.
+  /// (self-signed), '' if it does or if it is plain HTTP. The user compares it with `dmn connect`.
   static Future<String> probeFingerprint(String url) async {
     var fp = '';
     final h = HttpClient()
@@ -102,13 +102,18 @@ class Transport {
       await resp.drain();
       return fp;
     } on SocketException catch (e) {
-      throw ApiError(0, 'Cannot reach $url (${e.osError?.message ?? e.message})');
+      throw ApiError(0, 'Cannot reach $url (${e.osError?.message ?? e.message}). $_firewallHint');
     } on TimeoutException {
-      throw ApiError(0, '$url did not answer');
+      throw ApiError(0, '$url did not answer. $_firewallHint');
     } finally {
       h.close(force: true);
     }
   }
+
+  static const _firewallHint =
+      'Check the address (the server\'s public IP, not 10.x or 192.168.x when you are away) and that the port is '
+      'open in the server\'s firewall and, on a cloud VM, in the provider\'s console. "sudo dmn connect" on the '
+      'server shows the steps.';
 
   static bool get canDownload => true;
 }

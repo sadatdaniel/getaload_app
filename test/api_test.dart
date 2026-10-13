@@ -21,6 +21,7 @@ void main() {
     expect(Server.normalizeUrl('http://10.0.0.2:8080/x'), 'http://10.0.0.2:8080');
     expect(Server.normalizeUrl('ftp://x'), isNull);
     expect(Server.normalizeUrl(''), isNull);
+    expect(Server.normalizeUrl('https:// 10.0.0.5:8080 '), 'https://10.0.0.5:8080'); // phone keyboard spaces
   });
 
   test('clipboard links', () {

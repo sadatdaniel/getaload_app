@@ -68,7 +68,7 @@ class _DiscoverViewState extends State<DiscoverView> {
               controller: _search,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                hintText: 'Search your add-ons',
+                hintText: 'Search movies and series',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _query.isEmpty
                     ? null
