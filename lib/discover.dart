@@ -8,10 +8,27 @@ import 'package:url_launcher/url_launcher.dart';
 import 'api.dart';
 import 'launch.dart';
 import 'media.dart';
+import 'phone_addons.dart';
 import 'ui.dart';
 
 /// Whether the current server has add-ons switched on (drives the Discover tab). Updated by Home and Settings.
 final addonsEnabled = ValueNotifier<bool>(false);
+
+final _phoneCache = <String, List<PhoneAddon>>{};
+
+/// The server's add-ons that this phone asks itself (refreshed by Discover, reused by the title page).
+Future<List<PhoneAddon>> _phoneAddons(Api api, {bool fresh = true}) async {
+  final hit = _phoneCache[api.server.url];
+  if (!fresh && hit != null) return hit;
+  try {
+    final r = await api.call('GET', '/v1/addons');
+    return _phoneCache[api.server.url] = await PhoneAddons.load(
+      ((r['addons'] as List?) ?? []).cast<Map<String, dynamic>>(),
+    );
+  } catch (_) {
+    return hit ?? [];
+  }
+}
 
 class DiscoverView extends StatefulWidget {
   final Server server;
@@ -46,8 +63,13 @@ class _DiscoverViewState extends State<DiscoverView> {
     });
     try {
       final path = _query.isEmpty ? '/v1/addons/home' : '/v1/addons/search?q=${Uri.encodeQueryComponent(_query)}';
-      final r = ((await _api.call('GET', path)) as List? ?? []).cast<Map<String, dynamic>>();
-      if (mounted) setState(() => _rows = r);
+      // Add-ons that block the server are asked from this phone (titles only; see phone_addons.dart).
+      final phone = await _phoneAddons(_api);
+      final results = await Future.wait([
+        _api.call('GET', path).then((r) => (r as List? ?? []).cast<Map<String, dynamic>>()),
+        PhoneAddons.catalogs(phone, query: _query),
+      ]);
+      if (mounted) setState(() => _rows = [...results[0], ...results[1]]);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
@@ -256,12 +278,17 @@ class _TitleScreenState extends State<TitleScreen> {
 
   Future<void> _loadMeta() async {
     try {
-      final m = await _api.call(
-        'GET',
-        '/v1/addons/meta?type=${Uri.encodeQueryComponent(_type)}&id=${Uri.encodeQueryComponent(widget.preview['id'])}',
-      );
-      if (!mounted) return;
-      setState(() => _meta = {...widget.preview, ...(m as Map<String, dynamic>)});
+      Map<String, dynamic>? m;
+      try {
+        m = await _api.call(
+          'GET',
+          '/v1/addons/meta?type=${Uri.encodeQueryComponent(_type)}&id=${Uri.encodeQueryComponent(widget.preview['id'])}',
+        );
+      } catch (_) {
+        m = await PhoneAddons.meta(await _phoneAddons(_api, fresh: false), _type, widget.preview['id']);
+      }
+      if (!mounted || m == null) return;
+      setState(() => _meta = {...widget.preview, ...m!});
     } catch (_) {} // the preview is enough to show the page; sources still work
     if (_videos.isEmpty) {
       _loadStreams(_meta['id']);
@@ -278,11 +305,19 @@ class _TitleScreenState extends State<TitleScreen> {
       _streamError = '';
     });
     try {
-      final r = await _api.call(
-        'GET',
-        '/v1/addons/streams?type=${Uri.encodeQueryComponent(_type)}&id=${Uri.encodeQueryComponent(id)}',
-      );
-      if (mounted && _video == id) setState(() => _streams = (r as List).cast<Map<String, dynamic>>());
+      // Sources from the server's add-ons and from those this phone asks itself. Either way they are only
+      // descriptions; _start hands the chosen one to the server, which does the downloading.
+      final phone = await _phoneAddons(_api, fresh: false);
+      final lists = await Future.wait([
+        _api
+            .call(
+              'GET',
+              '/v1/addons/streams?type=${Uri.encodeQueryComponent(_type)}&id=${Uri.encodeQueryComponent(id)}',
+            )
+            .then((r) => (r as List).cast<Map<String, dynamic>>()),
+        PhoneAddons.streams(phone, _type, id),
+      ]);
+      if (mounted && _video == id) setState(() => _streams = [...lists[0], ...lists[1]]);
     } catch (e) {
       if (mounted) setState(() => _streamError = e.toString());
     }
@@ -307,7 +342,12 @@ class _TitleScreenState extends State<TitleScreen> {
         'mode': download ? 'standard' : 'stream',
       });
       if (r['external'] != null) {
-        await launchUrl(Uri.parse(r['external']), mode: LaunchMode.externalApplication);
+        // Only web pages: a magnet: here would hand the torrent to a torrent app on the phone.
+        final u = Uri.tryParse(r['external']);
+        if (u == null || (u.scheme != 'https' && u.scheme != 'http')) {
+          return _toast('This source can\'t be opened here.');
+        }
+        await launchUrl(u, mode: LaunchMode.externalApplication);
         return;
       }
       if (download) {
@@ -336,7 +376,7 @@ class _TitleScreenState extends State<TitleScreen> {
       MenuAction('Play', icon: Icons.play_arrow, onTap: () => _start(s)),
       if (s['infoHash'] != null || s['url'] != null)
         MenuAction('Download to the server', icon: Icons.download, onTap: () => _start(s, download: true)),
-      if (s['url'] != null)
+      if (s['url'] is String && (s['url'] as String).startsWith(RegExp(r'https?://'))) // never a magnet
         MenuAction(
           'Copy link',
           icon: Icons.link,

@@ -9,6 +9,7 @@ import 'api.dart';
 import 'discover.dart' show addonsEnabled, p2pNote;
 import 'jobs.dart' show fmtBytes;
 import 'net.dart' if (dart.library.js_interop) 'net_web.dart';
+import 'phone_addons.dart';
 import 'servers.dart';
 import 'ui.dart';
 
@@ -125,6 +126,14 @@ class _ServerScreenState extends State<ServerScreen> {
   Future<void> _loadAddons() async {
     try {
       final a = await _api.call('GET', '/v1/addons') as Map<String, dynamic>;
+      // Add-ons asked from this phone: the server does not load them, so their manifests come from here.
+      for (final x in ((a['addons'] as List?) ?? []).cast<Map<String, dynamic>>().where((x) => x['phone'] == true)) {
+        try {
+          x['manifest'] = await PhoneAddons.manifest(x['url']);
+        } catch (e) {
+          x['error'] = e.toString();
+        }
+      }
       if (!mounted) return;
       setState(() => _addons = a);
       addonsEnabled.value = a['enabled'] == true;
@@ -140,12 +149,52 @@ class _ServerScreenState extends State<ServerScreen> {
     _loadAddons();
   }
 
+  static const _phoneNote =
+      'This phone only looks up titles and the list of sources. Playing or downloading a source still happens '
+      'on the server: the phone never connects to torrent peers.';
+
   Future<void> _addAddon(String url) async {
     if (url.trim().isEmpty) return;
     try {
       final a = await _api.call('POST', '/v1/addons', {'url': url.trim()});
       _addonUrl.clear();
       _toast('Added ${a['manifest']?['name'] ?? 'the add-on'}');
+    } on ApiError catch (e) {
+      // Many add-ons refuse cloud servers; offer to ask them from this phone instead.
+      if (e.message.contains('refused this server') && mounted) {
+        final ok = await confirm(
+          context,
+          title: 'This add-on refuses your server',
+          body: const Text(
+            'Many add-ons block servers in data centres. Ask it from this phone instead?\n\n$_phoneNote',
+          ),
+          action: 'Ask from this phone',
+        );
+        if (ok) await _addFromPhone(url.trim());
+      } else {
+        _toast(e.toString());
+      }
+    }
+    _loadAddons();
+  }
+
+  Future<void> _addFromPhone(String url) async {
+    var base = url.replaceFirst(RegExp(r'^stremio://'), 'https://');
+    base = base.replaceFirst(RegExp(r'/manifest\.json$'), '').replaceFirst(RegExp(r'/$'), '');
+    try {
+      final m = await PhoneAddons.manifest(base); // the phone must reach it, or there is no point
+      await _api.call('POST', '/v1/addons', {'url': base, 'phone': true});
+      _addonUrl.clear();
+      _toast('Added ${m['name']} (asked from this phone)');
+    } catch (e) {
+      _toast('This phone cannot load it either: $e');
+    }
+  }
+
+  Future<void> _setPhone(String url, bool phone) async {
+    try {
+      if (phone) await PhoneAddons.manifest(url);
+      await _api.call('PUT', '/v1/addons/phone', {'url': url, 'phone': phone});
     } catch (e) {
       _toast(e.toString());
     }
@@ -329,11 +378,19 @@ class _ServerScreenState extends State<ServerScreen> {
                           'v${a['manifest']?['version'] ?? '?'}',
                           if (a['manifest']?['behaviorHints']?['p2p'] == true) 'P2P (torrents)',
                           if (a['manifest']?['behaviorHints']?['adult'] == true) 'adult content',
+                          if (a['phone'] == true) 'asked from this phone',
                         ].join(' · '),
                       ].where((x) => x.toString().isNotEmpty).join('\n'),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      IconButton(
+                        icon: Icon(a['phone'] == true ? Icons.smartphone : Icons.dns_outlined),
+                        tooltip: a['phone'] == true
+                            ? 'Asked from this phone. Tap to let the server ask it again'
+                            : 'Asked by the server. Tap to ask it from this phone (for add-ons that block the server)',
+                        onPressed: () => _setPhone(a['url'], a['phone'] != true),
+                      ),
                       Switch(value: a['enabled'] != false, onChanged: (v) => _toggleAddon(a['url'], v)),
                       IconButton(
                         icon: const Icon(Icons.delete_outline),

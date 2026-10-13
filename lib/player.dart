@@ -673,11 +673,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ]),
                   if (mpv != null)
                     _section('Decoder', [
-                      for (final (v, l) in [
-                        ('auto-safe', 'Hardware'),
-                        ('auto-copy', 'Compatible'),
-                        ('no', 'Software'),
-                      ])
+                      for (final (v, l) in [('auto-safe', 'Hardware'), ('auto-copy', 'Compatible'), ('no', 'Software')])
                         ChoiceChip(
                           label: Text(l),
                           selected: _hwdec == v,
