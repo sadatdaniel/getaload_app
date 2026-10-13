@@ -95,11 +95,16 @@ class SettingsView extends StatelessWidget {
                 ],
               ),
               SettingsGroup(
-                title: 'Adding torrents',
+                title: 'Adding downloads',
                 children: [
                   SettingsRow(
-                    title: 'Ask for options',
-                    subtitle: 'Show stream, unpack and Drive options when torrents are added.',
+                    title: 'Ask for video options',
+                    subtitle: 'Video or audio, quality, format and subtitles when a video page is added.',
+                    trailing: Switch(value: s.videoAsk, onChanged: (v) => s.videoAsk = v),
+                  ),
+                  SettingsRow(
+                    title: 'Ask for torrent options',
+                    subtitle: 'Stream, unpack and Drive options when torrents are added.',
                     trailing: Switch(value: s.torrentAsk, onChanged: (v) => s.torrentAsk = v),
                   ),
                 ],

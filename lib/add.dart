@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'api.dart';
 import 'settings.dart';
 import 'ui.dart';
+import 'video_options.dart';
 
 /// Options sent with each torrent (and saved as the default when "Don't ask again" is ticked).
 class AddOptions {
@@ -96,6 +97,30 @@ class AddPanelState extends State<AddPanel> {
   Future<void> _addLinks() async {
     final links = splitLinks(_link.text);
     if (links.isEmpty) return;
+    // One web link: ask the server what it is first; a video page gets the options dialog (video or audio,
+    // quality, format, subtitles). Several links at once are added as they are.
+    if (links.length == 1 && links.first.startsWith(RegExp(r'https?://'))) {
+      setState(() => _busy = true);
+      _toast('Checking the link…');
+      Map<String, dynamic>? probe;
+      try {
+        probe = await widget.api.call('POST', '/v1/probe', {'url': links.first});
+      } catch (_) {} // the download itself will say what is wrong
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      final media = probe?['video'];
+      if (probe?['kind'] == 'video' && media is Map<String, dynamic>) {
+        final s = AppSettings.instance;
+        final extra = s.videoAsk ? await askVideoOptions(context, media) : videoRequest(s.videoDefaults);
+        if (extra == null) return; // cancelled: keep the link in the box
+        await _send([
+          {'source': links.first, ...extra},
+        ], 'links');
+        _link.clear();
+        return;
+      }
+    }
     await _send([
       for (final l in links) {'source': l},
     ], 'links');

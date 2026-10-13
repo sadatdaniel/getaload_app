@@ -248,6 +248,10 @@ class Api {
     return uri(r['url'] as String);
   }
 
+  /// Bumped when files on the server change (a download finished, started or was removed, a file was moved or
+  /// deleted), so Media and Files reload by themselves.
+  static final filesChanged = ValueNotifier<int>(0);
+
   /// The server (by URL) that last rejected this device's token; null when all is well.
   static final unauthorized = ValueNotifier<String?>(null);
 

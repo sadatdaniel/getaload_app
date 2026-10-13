@@ -44,10 +44,12 @@ class _FilesViewState extends State<FilesView> {
   void initState() {
     super.initState();
     _load();
+    Api.filesChanged.addListener(_load); // downloads finishing, files changed elsewhere
   }
 
   @override
   void dispose() {
+    Api.filesChanged.removeListener(_load);
     _api.close();
     super.dispose();
   }
@@ -103,7 +105,7 @@ class _FilesViewState extends State<FilesView> {
     try {
       await f();
       _toast(ok);
-      _load();
+      Api.filesChanged.value++; // also reloads this folder
     } catch (e) {
       _toast(e.toString());
     }

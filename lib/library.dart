@@ -30,11 +30,13 @@ class _MediaViewState extends State<MediaView> {
     _items = _cache[widget.server.url];
     _load();
     _s.addListener(_changed);
+    Api.filesChanged.addListener(_load); // new downloads appear without a refresh
   }
 
   @override
   void dispose() {
     _s.removeListener(_changed);
+    Api.filesChanged.removeListener(_load);
     _api.close();
     super.dispose();
   }

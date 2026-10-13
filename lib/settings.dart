@@ -66,6 +66,16 @@ class AppSettings extends ChangeNotifier {
   Map<String, dynamic> get torrentDefaults => jsonDecode(_p.getString('torrentDefaults') ?? '{}');
   set torrentDefaults(Map<String, dynamic> v) => _set('torrentDefaults', jsonEncode(v));
 
+  // ---- adding video pages ----
+
+  /// Show the video options dialog (video or audio, quality, container, subtitles) for a video link.
+  bool get videoAsk => _p.getBool('videoAsk') ?? true;
+  set videoAsk(bool v) => _set('videoAsk', v);
+
+  /// The last choices: {audio: bool, quality, container, audioFormat, subs: [..]}.
+  Map<String, dynamic> get videoDefaults => jsonDecode(_p.getString('videoDefaults') ?? '{}');
+  set videoDefaults(Map<String, dynamic> v) => _set('videoDefaults', jsonEncode(v));
+
   // ---- resume ----
 
   Duration? position(String id) {

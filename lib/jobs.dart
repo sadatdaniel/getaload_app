@@ -65,7 +65,10 @@ class _JobsViewState extends State<JobsView> {
             live.keys.toSet().difference(_live.keys.toSet()).isNotEmpty ||
             _live.keys.toSet().difference(live.keys.toSet()).isNotEmpty;
         if (mounted) setState(() => _live = live);
-        if (changed) _load();
+        if (changed) {
+          _load();
+          Api.filesChanged.value++; // a download started or finished: Media and Files show it without a refresh
+        }
       },
       onError: (e) => e is ApiError && e.status == 401
           ? setState(() => _error = e.toString())
@@ -87,6 +90,7 @@ class _JobsViewState extends State<JobsView> {
     try {
       await f();
       await _load();
+      Api.filesChanged.value++;
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
