@@ -96,11 +96,11 @@ class _AccountSettingsState extends State<AccountSettings> {
 
   Future<void> _addUser() async {
     final name = TextEditingController();
-    final r = await _pinDialog(context, 'Add a user', name: name);
+    final r = await _pinDialog(context, 'Add a person', name: name);
     if (r == null) return;
     await _act(
       () => _api.call('POST', '/v1/users', {'name': name.text.trim(), 'pin': r.pin}),
-      '${name.text.trim()} can sign in now',
+      '${name.text.trim()} can now sign in on their own phone: server ${widget.server.url}, their name and this PIN',
     );
   }
 
@@ -161,8 +161,10 @@ class _AccountSettingsState extends State<AccountSettings> {
         ),
         if (widget.server.owner)
           SettingsGroup(
-            title: 'Users',
-            description: 'Everyone has their own downloads and files; nobody sees anyone else\'s, not even you.',
+            title: 'People on this server',
+            description:
+                'Each person signs in on their own phone with their name and PIN, and sees only their own downloads '
+                'and files (not even you see them). To switch people on this phone, sign out above.',
             children: [
               for (final u in _users)
                 SettingsRow(
@@ -180,7 +182,7 @@ class _AccountSettingsState extends State<AccountSettings> {
                     ],
                   ),
                 ),
-              SettingsRow(title: 'Add a user', onTap: _addUser),
+              SettingsRow(title: 'Add a person', subtitle: 'Choose their name and a starting PIN', onTap: _addUser),
             ],
           ),
       ],
