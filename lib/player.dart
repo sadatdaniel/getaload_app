@@ -675,7 +675,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     _section('Decoder', [
                       for (final (v, l) in [
                         ('auto-safe', 'Hardware'),
-                        ('auto-copy', 'Hardware (copy)'),
+                        ('auto-copy', 'Compatible'),
                         ('no', 'Software'),
                       ])
                         ChoiceChip(

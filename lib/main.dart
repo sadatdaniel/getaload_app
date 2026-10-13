@@ -395,13 +395,17 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: wide
           ? null
-          : NavigationBar(
-              selectedIndex: _tab,
-              onDestinationSelected: (i) => setState(() => _tab = i),
-              destinations: [
-                for (final (icon, sel, label) in dests)
-                  NavigationDestination(icon: Icon(icon), selectedIcon: Icon(sel), label: label),
-              ],
+          // Five labels share the width: with a large system font "Downloads" would wrap and lift its tab.
+          : MediaQuery.withClampedTextScaling(
+              maxScaleFactor: 1.15,
+              child: NavigationBar(
+                selectedIndex: _tab,
+                onDestinationSelected: (i) => setState(() => _tab = i),
+                destinations: [
+                  for (final (icon, sel, label) in dests)
+                    NavigationDestination(icon: Icon(icon), selectedIcon: Icon(sel), label: label),
+                ],
+              ),
             ),
     );
   }

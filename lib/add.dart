@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import 'api.dart';
 import 'settings.dart';
+import 'ui.dart';
 
 /// Options sent with each torrent (and saved as the default when "Don't ask again" is ticked).
 class AddOptions {
@@ -150,27 +151,21 @@ class AddPanelState extends State<AddPanel> {
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
             ),
             const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _link,
-                    minLines: 1,
-                    maxLines: 4,
-                    keyboardType: TextInputType.url,
-                    decoration: const InputDecoration(hintText: 'https://… or magnet:?…', prefixIcon: Icon(Icons.link)),
-                    onSubmitted: (_) => _addLinks(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: _busy ? null : _addLinks,
-                  icon: const Icon(Icons.download),
-                  label: const Text('Download'),
-                  style: FilledButton.styleFrom(minimumSize: const Size(0, 52)),
-                ),
-              ],
+            FieldWithButton(
+              field: TextField(
+                controller: _link,
+                minLines: 1,
+                maxLines: 4,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(hintText: 'Paste a link or magnet', prefixIcon: Icon(Icons.link)),
+                onSubmitted: (_) => _addLinks(),
+              ),
+              button: FilledButton.icon(
+                onPressed: _busy ? null : _addLinks,
+                icon: const Icon(Icons.download),
+                label: const Text('Download'),
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 52)),
+              ),
             ),
             const SizedBox(height: 12),
             _DropZone(onTap: _busy ? null : _browse, busy: _busy),

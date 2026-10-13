@@ -252,6 +252,7 @@ class _ServerScreenState extends State<ServerScreen> {
     final s = widget.server;
     final status = _drive?['status'];
     final admin = s.user.isEmpty || s.owner; // add-ons and Drive are server-wide: the owner manages them
+    final installed = {for (final a in (_addons?['addons'] as List?) ?? []) a['url'] as String};
     final p = _ports;
     final cs = Theme.of(context).colorScheme;
     final mono = TextStyle(fontFamily: 'monospace', fontSize: 12.5, color: cs.onSurfaceVariant);
@@ -345,19 +346,14 @@ class _ServerScreenState extends State<ServerScreen> {
               SettingsRow(
                 title: 'Add an add-on',
                 subtitle: 'Paste its manifest address (https://…/manifest.json or stremio://…).',
-                below: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _addonUrl,
-                        keyboardType: TextInputType.url,
-                        decoration: const InputDecoration(hintText: 'https://example.com/manifest.json'),
-                        onSubmitted: (_) => _addAddon(_addonUrl.text),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(onPressed: () => _addAddon(_addonUrl.text), child: const Text('Add')),
-                  ],
+                below: FieldWithButton(
+                  field: TextField(
+                    controller: _addonUrl,
+                    keyboardType: TextInputType.url,
+                    decoration: const InputDecoration(hintText: 'https://example.com/manifest.json'),
+                    onSubmitted: (_) => _addAddon(_addonUrl.text),
+                  ),
+                  button: FilledButton(onPressed: () => _addAddon(_addonUrl.text), child: const Text('Add')),
                 ),
               ),
               SettingsRow(
@@ -371,11 +367,19 @@ class _ServerScreenState extends State<ServerScreen> {
                       ('Cinemeta (titles)', 'https://v3-cinemeta.strem.io/manifest.json'),
                       ('OpenSubtitles (subtitles)', 'https://opensubtitles-v3.strem.io/manifest.json'),
                     ])
-                      ActionChip(
-                        avatar: const Icon(Icons.add, size: 16),
-                        label: Text(name),
-                        onPressed: () => _addAddon(url),
-                      ),
+                      // Installed ones show a check and can't be added twice (the server keeps the base URL).
+                      if (installed.contains(url.replaceFirst(RegExp(r'/manifest\.json$'), '')))
+                        ActionChip(
+                          avatar: Icon(Icons.check, size: 16, color: cs.primary),
+                          label: Text('$name · added'),
+                          onPressed: null,
+                        )
+                      else
+                        ActionChip(
+                          avatar: const Icon(Icons.add, size: 16),
+                          label: Text(name),
+                          onPressed: () => _addAddon(url),
+                        ),
                   ],
                 ),
               ),

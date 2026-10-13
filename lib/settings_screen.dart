@@ -73,9 +73,11 @@ class SettingsView extends StatelessWidget {
                   ),
                   SettingsRow(
                     title: 'Decoder',
-                    subtitle: 'Software decoding plays more formats but uses more battery.',
+                    subtitle:
+                        'Hardware saves battery. Compatible also uses the hardware but works around a green, black '
+                        'or broken picture on some phones. Software plays everything, using more battery.',
                     trailing: Choice<String>(
-                      options: const [('auto-safe', 'Hardware'), ('auto-copy', 'Copy'), ('no', 'Software')],
+                      options: const [('auto-safe', 'Hardware'), ('auto-copy', 'Compatible'), ('no', 'Software')],
                       value: s.hwdec,
                       onChanged: (v) => s.hwdec = v,
                     ),

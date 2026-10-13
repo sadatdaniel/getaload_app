@@ -254,3 +254,24 @@ Future<bool> confirm(
   );
   return ok == true;
 }
+
+/// A text field with its button: side by side on wide screens, the button under the field on narrow ones
+/// (phones with large text squeeze the field otherwise).
+class FieldWithButton extends StatelessWidget {
+  final Widget field, button;
+  const FieldWithButton({super.key, required this.field, required this.button});
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => box.maxWidth < 480
+        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [field, const SizedBox(height: 8), button])
+        : Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: field),
+              const SizedBox(width: 8),
+              button,
+            ],
+          ),
+  );
+}
