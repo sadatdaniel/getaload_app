@@ -58,6 +58,12 @@ class _ServerScreenState extends State<ServerScreen> {
         _drive = ps.where((p) => p['name'] == 'gdrive').firstOrNull;
         _driveError = '';
       });
+      // The server installs a missing tool by itself (e.g. rclone for Drive): look again until it is there.
+      if (_drive?['status'] == 'missing-tool' &&
+          '${_drive?['reason']}'.contains('installing') &&
+          !'${_drive?['reason']}'.contains('failed')) {
+        Future.delayed(const Duration(seconds: 5), () => mounted ? _load() : null);
+      }
     } catch (e) {
       if (mounted) setState(() => _driveError = e.toString());
     }
@@ -556,7 +562,7 @@ class _ServerScreenState extends State<ServerScreen> {
                   : status == 'ready'
                   ? 'Connected. Finished downloads can be copied there.'
                   : status == 'missing-tool'
-                  ? 'The server is missing a helper tool: ${_drive?['reason'] ?? ''}'
+                  ? '${(_drive?['reason'] ?? '').toString().replaceFirst(RegExp('^i'), 'I')}…'
                   : 'Not connected',
               trailing: admin && status != null && status != 'missing-tool'
                   ? OutlinedButton(onPressed: _connectDrive, child: Text(status == 'ready' ? 'Reconnect' : 'Connect'))
