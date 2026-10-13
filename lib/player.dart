@@ -88,7 +88,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.initState();
     _hwdec = _s.hwdec;
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _player.stream.error.listen((e) => mounted ? setState(() => _error = e) : null);
+    _player.stream.error.listen(_onError);
+    // Playback moving on means the last error was a hiccup mpv recovered from.
+    _player.stream.position.listen(
+      (_) => _error.isNotEmpty && _player.state.playing ? setState(() => _error = '') : null,
+    );
     _player.stream.width.listen(_followVideo);
     _player.stream.height.listen(_followVideo);
     _player.stream.completed.listen((done) {
@@ -96,6 +100,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
     _open();
     _saver = Timer.periodic(const Duration(seconds: 5), (_) => _save());
+  }
+
+  // mpv also reports errors it recovers from (a damaged audio packet it skips), so an error is only shown when
+  // playback has not moved on two seconds later.
+  void _onError(String e) {
+    final at = _player.state.position;
+    Timer(const Duration(seconds: 2), () {
+      if (mounted && (!_player.state.playing || _player.state.position == at)) setState(() => _error = e);
+    });
   }
 
   @override
@@ -719,6 +732,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final back = {5: Icons.replay_5, 10: Icons.replay_10, 30: Icons.replay_30}[step] ?? Icons.replay;
     final fwd = {5: Icons.forward_5, 10: Icons.forward_10, 30: Icons.forward_30}[step] ?? Icons.forward;
     final theme = MaterialVideoControlsThemeData(
+      // Off the screen edge: phones round their corners, and the bar should not run into them.
+      seekBarMargin: const EdgeInsets.fromLTRB(24, 0, 24, 16),
       seekOnDoubleTap: true,
       seekOnDoubleTapBackwardDuration: Duration(seconds: step),
       seekOnDoubleTapForwardDuration: Duration(seconds: step),
