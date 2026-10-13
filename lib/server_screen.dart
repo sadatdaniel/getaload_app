@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
+import 'cookies_settings.dart';
 import 'discover.dart' show addonsEnabled, p2pNote;
 import 'jobs.dart' show fmtBytes;
 import 'net.dart' if (dart.library.js_interop) 'net_web.dart';
@@ -442,6 +443,7 @@ class _ServerScreenState extends State<ServerScreen> {
               ),
             ],
           ),
+        CookieSettings(key: ValueKey('ck${s.url}'), server: s),
         SettingsGroup(
           title: 'Storage',
           children: [
