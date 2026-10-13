@@ -35,6 +35,7 @@ class _ServerScreenState extends State<ServerScreen> {
     super.initState();
     _load();
     _loadPorts();
+    _checkUpdate();
     _loadLeftovers();
     _loadAddons();
   }
@@ -117,6 +118,59 @@ class _ServerScreenState extends State<ServerScreen> {
     );
     if (!ok) return;
     await widget.servers.remove(widget.server); // the home screen switches to the next server
+  }
+
+  // ---- server software update ----
+
+  Map<String, dynamic>? _update; // {current, latest, available, notes} from GET /v1/update
+  bool _updating = false;
+
+  Future<void> _checkUpdate({bool now = false}) async {
+    try {
+      final c = await _api.call('GET', '/v1/update${now ? '?refresh=true' : ''}') as Map<String, dynamic>;
+      if (mounted) setState(() => _update = c);
+      if (now && c['available'] != true) _toast('The server is up to date (${c['current']})');
+    } catch (e) {
+      if (now) _toast(e.toString());
+    }
+  }
+
+  // The server verifies the signed release, swaps it in and restarts; a version that does not start is rolled
+  // back by itself. Here we wait until it answers with the new version.
+  Future<void> _applyUpdate() async {
+    final latest = _update?['latest'] ?? '';
+    final notes = (_update?['notes'] ?? '').toString().trim();
+    final ok = await confirm(
+      context,
+      title: 'Update the server to $latest?',
+      body: SingleChildScrollView(
+        child: Text(
+          '${notes.isEmpty ? '' : '$notes\n\n'}'
+          'The server restarts once; running downloads pause for a moment and continue by themselves.',
+        ),
+      ),
+      action: 'Update',
+    );
+    if (!ok) return;
+    setState(() => _updating = true);
+    try {
+      await _api.call('POST', '/v1/update/apply');
+      for (var i = 0; i < 45; i++) {
+        await Future.delayed(const Duration(seconds: 2));
+        try {
+          final h = await _api.call('GET', '/v1/health');
+          if (h['version'] == latest) {
+            _toast('Updated to $latest');
+            _load();
+            _checkUpdate();
+            break;
+          }
+        } catch (_) {} // restarting
+      }
+    } catch (e) {
+      _toast(e.toString());
+    }
+    if (mounted) setState(() => _updating = false);
   }
 
   // ---- add-ons ----
@@ -341,7 +395,26 @@ class _ServerScreenState extends State<ServerScreen> {
               title: 'Address',
               trailing: SelectableText(s.url, style: mono),
             ),
-            if (_version.isNotEmpty) SettingsRow(title: 'Version', trailing: Text(_version)),
+            if (_version.isNotEmpty)
+              SettingsRow(
+                title: 'Software',
+                subtitle: _updating
+                    ? 'Updating to ${_update?['latest']}… the server restarts'
+                    : _update == null
+                    ? 'Version $_version' // this server does not update itself (e.g. Docker: pull the new image)
+                    : _update?['available'] == true
+                    ? 'Version $_version. Version ${_update!['latest']} is available.'
+                    : 'Version $_version. Up to date.',
+                trailing: _updating
+                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                    : _update?['available'] == true && admin
+                    ? TextButton(onPressed: _applyUpdate, child: const Text('Update'))
+                    : IconButton(
+                        icon: const Icon(Icons.refresh),
+                        tooltip: 'Check for updates now',
+                        onPressed: () => _checkUpdate(now: true),
+                      ),
+              ),
             if (s.fp.isNotEmpty)
               SettingsRow(
                 title: 'Certificate',
