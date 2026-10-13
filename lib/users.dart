@@ -170,13 +170,14 @@ class _AccountSettingsState extends State<AccountSettings> {
                 SettingsRow(
                   title: u['name'],
                   subtitle: u['owner'] == true ? 'Owner' : null,
-                  trailing: Wrap(
-                    spacing: 4,
-                    children: [
-                      TextButton(onPressed: () => _resetPin(u), child: const Text('Reset PIN')),
+                  trailing: PopupMenuButton<String>(
+                    tooltip: 'More',
+                    onSelected: (v) => v == 'pin' ? _resetPin(u) : _removeUser(u),
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(value: 'pin', child: Text('Reset PIN')),
                       if (u['id'] != _me)
-                        TextButton(
-                          onPressed: () => _removeUser(u),
+                        PopupMenuItem(
+                          value: 'remove',
                           child: Text('Remove', style: TextStyle(color: cs.error)),
                         ),
                     ],

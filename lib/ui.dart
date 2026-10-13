@@ -162,7 +162,13 @@ class SettingsRow extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     // Small controls (switches, icons, short text) always sit on the right. Wide ones (choices, sliders,
     // buttons) move under the label on narrow screens instead of squeezing the text into a sliver.
-    final small = trailing is Switch || trailing is IconButton || trailing is Text;
+    // Compact controls (a switch, an icon, a text button, a menu) always sit on the right.
+    final small =
+        trailing is Switch ||
+        trailing is IconButton ||
+        trailing is Text ||
+        trailing is TextButton ||
+        trailing is PopupMenuButton;
     return LayoutBuilder(
       builder: (context, box) {
         final stack = trailing != null && !small && box.maxWidth < 560;
