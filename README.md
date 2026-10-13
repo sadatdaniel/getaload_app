@@ -12,6 +12,8 @@ self-hosted [download_me_not](https://github.com/sadatdaniel/download_me_not) se
 - **Users:** Settings, "Your account" (change PIN, signed-in devices, sign out); the owner also gets "Users" (add,
   reset PIN, remove). Add-on and Google Drive management are owner-only. Watch progress follows the user across
   devices (server preferences `w_*`).
+- **Site sign-ins** (Settings): sign in to a site inside the app (Android; the session goes to the server as your
+  cookies, then the phone forgets it) or import a cookies.txt. Each user has their own; only their downloads use them.
 - **Add-ons that block the server** (many refuse cloud servers): adding one offers "Ask from this phone", or tap
   the server/phone icon on an add-on. The phone then fetches only its JSON (titles, sources); a chosen source
   always goes to the server, which does all downloading and torrenting (`phone_addons.dart`).

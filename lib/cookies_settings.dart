@@ -4,9 +4,11 @@
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'api.dart';
+import 'site_signin.dart';
 import 'ui.dart';
 
 /// The site a cookies.txt is for: its most common domain, without subdomains ("www.youtube.com" → "youtube.com").
@@ -96,6 +98,31 @@ class _CookieSettingsState extends State<CookieSettings> {
     _load();
   }
 
+  // Sign in on a page inside the app (Android): its cookies become this user's cookies for the site.
+  Future<void> _signIn() async {
+    final domain = TextEditingController(text: 'youtube.com');
+    final ok = await confirm(
+      context,
+      title: 'Sign in to a site',
+      body: TextField(
+        controller: domain,
+        keyboardType: TextInputType.url,
+        decoration: const InputDecoration(labelText: 'Site', hintText: 'youtube.com'),
+      ),
+      action: 'Open',
+    );
+    final d = domain.text.trim().toLowerCase().replaceFirst(RegExp(r'^(https?://)?(www\.)?'), '').split('/').first;
+    if (!ok || d.isEmpty || !mounted) return;
+    final msg = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SiteSignInScreen(server: widget.server, domain: d),
+      ),
+    );
+    if (msg != null) _toast(msg);
+    _load();
+  }
+
   Future<void> _remove(String domain) async {
     try {
       await _api.call('DELETE', '/v1/cookies/${Uri.encodeComponent(domain)}');
@@ -126,6 +153,12 @@ class _CookieSettingsState extends State<CookieSettings> {
               onPressed: () => _remove(s['domain']),
               child: Text('Remove', style: TextStyle(color: cs.error)),
             ),
+          ),
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+          SettingsRow(
+            title: 'Sign in to a site',
+            subtitle: 'Sign in on the site inside the app; no file needed.',
+            onTap: _signIn,
           ),
         SettingsRow(title: 'Import cookies.txt', onTap: _import),
       ],
