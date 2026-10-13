@@ -26,6 +26,7 @@ class _ServerScreenState extends State<ServerScreen> {
   late final Api _api = Api(widget.server);
   String _version = '';
   Map<String, dynamic>? _drive; // the gdrive provider as /v1/providers reports it
+  Map<String, dynamic>? _myDrive; // GET /v1/me/drive: {connected, configured, status, reason}; null on older servers
   String _driveError = '';
   Map<String, dynamic>? _signin; // userCode + verificationUrl while waiting for Google
   Timer? _poll;
@@ -58,6 +59,10 @@ class _ServerScreenState extends State<ServerScreen> {
         _drive = ps.where((p) => p['name'] == 'gdrive').firstOrNull;
         _driveError = '';
       });
+      try {
+        final d = await _api.call('GET', '/v1/me/drive') as Map<String, dynamic>;
+        if (mounted) setState(() => _myDrive = d);
+      } catch (_) {} // an older server: one Drive for the whole server
       // The server installs a missing tool by itself (e.g. rclone for Drive): look again until it is there.
       if (_drive?['status'] == 'missing-tool' &&
           '${_drive?['reason']}'.contains('installing') &&
@@ -69,11 +74,99 @@ class _ServerScreenState extends State<ServerScreen> {
     }
   }
 
+  // ---- Google Drive (each user connects their own) ----
+
+  String _driveText(bool admin) {
+    final d = _myDrive, status = d?['status'] ?? _drive?['status'];
+    if (status == null) return 'Checking…';
+    if (status == 'missing-tool') {
+      return '${(d?['reason'] ?? _drive?['reason'] ?? '').toString().replaceFirst(RegExp('^i'), 'I')}…';
+    }
+    if (status == 'disabled') {
+      return admin ? 'Off on this server. Connect switches it on.' : 'The owner has switched Google Drive off.';
+    }
+    if (d != null && d['configured'] != true) {
+      return admin
+          ? 'Needs the app\'s Google client ID first (Set up).'
+          : 'The owner has not set up Google Drive on this server yet.';
+    }
+    if (d == null) return status == 'ready' ? 'Connected.' : 'Not connected'; // older server: one Drive for all
+    return d['connected'] == true
+        ? 'Your Drive is connected. Finished downloads can be copied there.'
+        : 'Not connected. Connect your own Google account; only your downloads go there.';
+  }
+
+  Widget? _driveButton(bool admin) {
+    final d = _myDrive, status = d?['status'] ?? _drive?['status'];
+    if (status == null || status == 'missing-tool' || (status == 'disabled' && !admin)) return null;
+    if (d != null && d['configured'] != true) {
+      return admin ? TextButton(onPressed: _setUpDrive, child: const Text('Set up')) : null;
+    }
+    if (d?['connected'] == true) return TextButton(onPressed: _disconnectDrive, child: const Text('Disconnect'));
+    return TextButton(onPressed: _connectDrive, child: const Text('Connect'));
+  }
+
+  Future<void> _disconnectDrive() async {
+    final ok = await confirm(
+      context,
+      title: 'Disconnect Google Drive?',
+      body: const Text('Copies to your Drive stop. Files already there stay.'),
+      action: 'Disconnect',
+    );
+    if (!ok) return;
+    try {
+      await _api.call('DELETE', '/v1/me/drive');
+    } catch (e) {
+      _toast(e.toString());
+    }
+    _load();
+  }
+
+  // The owner pastes the app's Google OAuth client (type "TVs and Limited Input devices") once; later releases
+  // carry it built in.
+  Future<void> _setUpDrive() async {
+    final id = TextEditingController(), sec = TextEditingController();
+    final ok = await confirm(
+      context,
+      title: 'Google client for this server',
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('From Google Cloud Console, an OAuth client of type "TVs and Limited Input devices".'),
+          TextField(
+            controller: id,
+            decoration: const InputDecoration(labelText: 'Client ID'),
+          ),
+          TextField(
+            controller: sec,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Client secret'),
+          ),
+        ],
+      ),
+      action: 'Save',
+    );
+    if (!ok || id.text.trim().isEmpty) return;
+    try {
+      await _api.call('PUT', '/v1/providers/gdrive/settings', {
+        'clientId': id.text.trim(),
+        'clientSecret': sec.text.trim(),
+      });
+      _toast('Saved. Each person can now connect their own Drive.');
+    } catch (e) {
+      _toast(e.toString());
+    }
+    _load();
+  }
+
   // Google's device flow: the server asks Google for a code, the user approves it in any browser.
   // Works from the phone because nothing has to redirect back to the server.
   Future<void> _connectDrive() async {
     try {
-      if (_drive?['enabled'] != true) await _api.call('PUT', '/v1/providers/gdrive/enabled', {'enabled': true});
+      final s = widget.server;
+      if (_drive?['enabled'] != true && (s.user.isEmpty || s.owner)) {
+        await _api.call('PUT', '/v1/providers/gdrive/enabled', {'enabled': true});
+      }
       final si = await _api.call('POST', '/v1/providers/gdrive/signin') as Map<String, dynamic>;
       setState(() => _signin = si);
       await Clipboard.setData(ClipboardData(text: si['userCode']));
@@ -384,8 +477,7 @@ class _ServerScreenState extends State<ServerScreen> {
   @override
   Widget build(BuildContext context) {
     final s = widget.server;
-    final status = _drive?['status'];
-    final admin = s.user.isEmpty || s.owner; // add-ons and Drive are server-wide: the owner manages them
+    final admin = s.user.isEmpty || s.owner; // add-ons, Drive set-up and updates are server-wide: the owner
     final installed = {for (final a in (_addons?['addons'] as List?) ?? []) a['url'] as String};
     final p = _ports;
     final cs = Theme.of(context).colorScheme;
@@ -555,18 +647,8 @@ class _ServerScreenState extends State<ServerScreen> {
           children: [
             SettingsRow(
               title: 'Google Drive',
-              subtitle: _driveError.isNotEmpty
-                  ? _driveError
-                  : status == null
-                  ? 'Checking…'
-                  : status == 'ready'
-                  ? 'Connected. Finished downloads can be copied there.'
-                  : status == 'missing-tool'
-                  ? '${(_drive?['reason'] ?? '').toString().replaceFirst(RegExp('^i'), 'I')}…'
-                  : 'Not connected',
-              trailing: admin && status != null && status != 'missing-tool'
-                  ? OutlinedButton(onPressed: _connectDrive, child: Text(status == 'ready' ? 'Reconnect' : 'Connect'))
-                  : null,
+              subtitle: _driveError.isNotEmpty ? _driveError : _driveText(admin),
+              trailing: _driveButton(admin),
               below: _signin == null
                   ? null
                   : Column(
