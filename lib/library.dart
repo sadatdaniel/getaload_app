@@ -7,6 +7,7 @@ import 'media.dart';
 import 'launch.dart';
 import 'servers.dart';
 import 'settings.dart';
+import 'watch.dart';
 
 class MediaView extends StatefulWidget {
   final Servers servers;
@@ -41,6 +42,7 @@ class _MediaViewState extends State<MediaView> {
   void _changed() => mounted ? setState(() {}) : null;
 
   Future<void> _load() async {
+    WatchSync.pull(_api); // Continue watching from other devices (updates through the settings listener)
     try {
       final l = ((await _api.call('GET', '/v1/media?limit=5000')) as List? ?? [])
           .map((e) => FileEntry.fromJson(e))

@@ -5,9 +5,13 @@ self-hosted [download_me_not](https://github.com/sadatdaniel/download_me_not) se
 
 ## What it does
 
-- **Servers:** pair by scanning the QR from the server's web panel (Settings, "Pair a phone") or `sudo dmn pair`,
-  paste the pairing link, or type address + token (self-signed certificates are pinned by fingerprint). Several
+- **Servers and sign-in:** type the server address (or scan/paste the pairing QR/link for the address and certificate),
+  then pick your name and enter your 4-digit PIN; the device gets its own token and stays signed in. Self-signed
+  certificates are pinned by fingerprint (trust on first use). A server without users takes a token instead. Several
   servers; switch from the header.
+- **Users:** Settings, "Your account" (change PIN, signed-in devices, sign out); the owner also gets "Users" (add,
+  reset PIN, remove). Add-on and Google Drive management are owner-only. Watch progress follows the user across
+  devices (server preferences `w_*`).
 - **Downloads:** add links (several at once), magnets, video pages, or `.torrent` files (drop or browse, many at
   once, with an options dialog and "Don't ask again"). Live progress; right click / long press for pause, play
   while downloading, download order (stream vs standard), verify, remove. Clipboard links are offered on launch.
@@ -25,8 +29,8 @@ self-hosted [download_me_not](https://github.com/sadatdaniel/download_me_not) se
 
 `lib/`: `main.dart` (app, theme, navigation), `api.dart` + `transport*.dart` (client; pinned on Android, fetch on
 web), `jobs.dart` + `add.dart` (downloads), `files.dart` + `icons.dart` + `viewer.dart` (file manager),
-`library.dart` (media), `player.dart` + `proxy*.dart` + `media.dart` (playback), `settings*.dart` +
-`server_screen.dart` (settings), `ui.dart` (context menus, settings rows, dialogs), `pair.dart` (adding servers).
+`library.dart` (media), `watch.dart` (watch progress on the server), `users.dart` (account and users), `player.dart` + `proxy*.dart` + `media.dart` (playback), `settings*.dart` +
+`server_screen.dart` (settings), `ui.dart` (context menus, settings rows, dialogs), `pair.dart` (adding servers and signing in).
 
 ## Develop (on the Windows host, not Docker)
 

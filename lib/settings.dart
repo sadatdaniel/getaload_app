@@ -92,8 +92,44 @@ class AppSettings extends ChangeNotifier {
   Future<void> touchRecent(Map<String, dynamic> item, Duration pos, Duration dur) async {
     final l = recent.where((r) => r['item']['id'] != item['id']).toList();
     final finished = dur > Duration.zero && pos > dur * 0.95;
-    if (!finished) l.insert(0, {'item': item, 'pos': pos.inMilliseconds, 'dur': dur.inMilliseconds});
+    final at = DateTime.now().millisecondsSinceEpoch;
+    if (!finished) l.insert(0, {'item': item, 'pos': pos.inMilliseconds, 'dur': dur.inMilliseconds, 'at': at});
     await _set('recent', jsonEncode(l.take(30).toList()));
+  }
+
+  /// Takes what the signed-in user watched on other devices (from the server) where it is newer than here.
+  /// Each entry: {title, path, archive, pos, dur, at}.
+  Future<void> mergeWatched(String server, Iterable<Map<String, dynamic>> remote) async {
+    final l = recent;
+    for (final e in remote) {
+      final id = 'server:$server:${e['archive'] ?? ''}:${e['path']}';
+      final i = l.indexWhere((r) => r['item']['id'] == id);
+      if (i >= 0 && ((l[i]['at'] ?? 0) as num) >= ((e['at'] ?? 0) as num)) continue;
+      if (i >= 0) l.removeAt(i);
+      await _p.setInt('pos:$id', (e['pos'] as num? ?? 0).toInt());
+      l.add({
+        'item': {
+          'id': id,
+          'title': e['title'] ?? '',
+          'url': '', // rebuilt from source when played (signed links expire)
+          'via': server,
+          'source': {'server': server, 'path': e['path'], 'archive': e['archive'] ?? ''},
+        },
+        'pos': e['pos'] ?? 0,
+        'dur': e['dur'] ?? 0,
+        'at': e['at'] ?? 0,
+      });
+    }
+    l.sort((a, b) => ((b['at'] ?? 0) as num).compareTo((a['at'] ?? 0) as num));
+    await _set('recent', jsonEncode(l.take(30).toList()));
+  }
+
+  /// Forgets positions and recent items of one server (another user signed in on this device).
+  Future<void> forgetServer(String server) async {
+    for (final k in _p.getKeys().where((k) => k.startsWith('pos:server:$server:')).toList()) {
+      await _p.remove(k);
+    }
+    await _set('recent', jsonEncode(recent.where((r) => r['item']['source']?['server'] != server).toList()));
   }
 }
 

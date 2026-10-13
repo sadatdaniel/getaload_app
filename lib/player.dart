@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'media.dart';
 import 'proxy.dart' if (dart.library.js_interop) 'proxy_web.dart';
 import 'settings.dart';
+import 'watch.dart';
 
 bool _mediaKitReady = false;
 
@@ -82,7 +83,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void dispose() {
     _saver?.cancel();
     _statTimer?.cancel();
-    _save();
+    _save(force: true);
     _player.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -121,11 +122,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _save() {
+  void _save({bool force = false}) {
     final pos = _player.state.position, dur = _player.state.duration;
     if (dur == Duration.zero) return; // nothing loaded yet
     _s.savePosition(_item.id, pos, dur);
     _s.touchRecent(_item.toJson(), pos, dur);
+    WatchSync.push(_item, pos, dur, force: force);
   }
 
   // Previous or next file of the folder. The current position is saved first, so coming back resumes.
@@ -133,7 +135,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final list = widget.list;
     final i = _index + delta;
     if (list == null || i < 0 || i >= list.length) return;
-    _save();
+    _save(force: true);
     try {
       final next = await list.open(i);
       if (!mounted) return;

@@ -6,6 +6,7 @@ import 'server_screen.dart';
 import 'servers.dart';
 import 'settings.dart';
 import 'ui.dart';
+import 'users.dart';
 
 class SettingsView extends StatelessWidget {
   final Servers servers;
@@ -115,6 +116,8 @@ class SettingsView extends StatelessWidget {
             ],
           ),
         ),
+        if (server.user.isNotEmpty)
+          AccountSettings(key: ValueKey('acc${server.url}${server.token}'), servers: servers, server: server),
         ServerScreen(key: ValueKey('srv${server.url}'), servers: servers, server: server),
       ],
     );

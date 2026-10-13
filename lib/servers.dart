@@ -1,10 +1,12 @@
 // Saved servers (URL, device token, certificate pin) in Android's encrypted storage.
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'api.dart';
+import 'settings.dart';
 
 class Servers extends ChangeNotifier {
   static const _store = FlutterSecureStorage();
@@ -32,11 +34,13 @@ class Servers extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Adds a server, or replaces the one with the same URL (pairing again gives a new token), and selects it.
+  /// Adds a server, or replaces the one with the same URL (signing in again gives a new token), and selects it.
+  /// Signing in as someone else forgets what the previous user watched on this device.
   Future<void> add(Server s) async {
     final i = list.indexWhere((x) => x.url == s.url);
     if (i >= 0) {
-      list[i] = Server(url: s.url, token: s.token, fp: s.fp, name: list[i].name);
+      if (list[i].user != s.user) await AppSettings.instance.forgetServer(s.url);
+      list[i] = s.copyWith(name: list[i].name);
     } else {
       list.add(s);
     }
@@ -58,8 +62,19 @@ class Servers extends ChangeNotifier {
   Future<void> rename(Server s, String name) async {
     final i = list.indexWhere((x) => x.url == s.url);
     if (i < 0) return;
-    list[i] = Server(url: s.url, token: s.token, fp: s.fp, name: name);
+    list[i] = s.copyWith(name: name);
     await _save();
+  }
+
+  /// A short random id for this install, so each device signs in under its own name ("Android 3f9a").
+  Future<String> deviceName() async {
+    var id = await _store.read(key: 'deviceId');
+    if (id == null) {
+      id = (Random.secure().nextInt(0xffff) + 0x10000).toRadixString(16).substring(1);
+      await _store.write(key: 'deviceId', value: id);
+    }
+    final p = defaultTargetPlatform.name;
+    return '${kIsWeb ? 'Browser' : p[0].toUpperCase() + p.substring(1)} $id';
   }
 
   Future<void> seenClip(String text) async {

@@ -12,13 +12,37 @@ class Server {
   final String token;
   final String fp; // hex SHA-256 of the certificate; empty = normal TLS verification (or plain HTTP)
   final String name;
+  final String user; // who this device signed in as (empty: a server without users, or a pairing token)
+  final bool owner; // the owner manages users
 
-  const Server({required this.url, required this.token, this.fp = '', required this.name});
+  const Server({
+    required this.url,
+    required this.token,
+    this.fp = '',
+    required this.name,
+    this.user = '',
+    this.owner = false,
+  });
 
-  Map<String, dynamic> toJson() => {'url': url, 'token': token, 'fp': fp, 'name': name};
+  Server copyWith({String? token, String? fp, String? name, String? user, bool? owner}) => Server(
+    url: url,
+    token: token ?? this.token,
+    fp: fp ?? this.fp,
+    name: name ?? this.name,
+    user: user ?? this.user,
+    owner: owner ?? this.owner,
+  );
 
-  factory Server.fromJson(Map<String, dynamic> j) =>
-      Server(url: j['url'], token: j['token'], fp: j['fp'] ?? '', name: j['name'] ?? j['url']);
+  Map<String, dynamic> toJson() => {'url': url, 'token': token, 'fp': fp, 'name': name, 'user': user, 'owner': owner};
+
+  factory Server.fromJson(Map<String, dynamic> j) => Server(
+    url: j['url'],
+    token: j['token'],
+    fp: j['fp'] ?? '',
+    name: j['name'] ?? j['url'],
+    user: j['user'] ?? '',
+    owner: j['owner'] ?? false,
+  );
 
   /// Parses the dmn://pair?v=1&url=..&token=..&fp=.. link from `dmn pair` or the web panel.
   static Server? fromPairLink(String link) {

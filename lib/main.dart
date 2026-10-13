@@ -498,21 +498,6 @@ class _ReauthBanner extends StatelessWidget {
   final Server server;
   const _ReauthBanner({required this.servers, required this.server});
 
-  Future<void> _paste(BuildContext context) async {
-    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
-    final s = Server.fromPairLink(text);
-    if (s == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Copy a pairing link first (web panel, Settings, "Pair a phone").')),
-        );
-      }
-      return;
-    }
-    await servers.add(s);
-    Api.unauthorized.value = null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -529,7 +514,6 @@ class _ReauthBanner extends StatelessWidget {
               '${server.name} no longer accepts this device. Sign in again to continue.',
               style: TextStyle(color: cs.onErrorContainer),
             ),
-            TextButton(onPressed: () => _paste(context), child: const Text('Paste pairing link')),
             TextButton(
               onPressed: () => Navigator.push(
                 context,
