@@ -70,6 +70,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // rotate button overrides it for this session. Leaving the player gives the app its normal orientation back.
   bool _landscape = false, _rotatedByHand = false;
 
+  // Swipe down to close (middle third: the left and right halves keep their brightness and volume swipes).
+  double _drag = 0;
+
+  void _dragEnd(DragEndDetails d) {
+    if (_drag > 140 || (d.primaryVelocity ?? 0) > 900) {
+      Navigator.maybePop(context); // dispose saves the position
+    } else {
+      setState(() => _drag = 0);
+    }
+  }
+
   void _orient(bool landscape) {
     if (kIsWeb) return;
     _landscape = landscape;
@@ -733,7 +744,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final fwd = {5: Icons.forward_5, 10: Icons.forward_10, 30: Icons.forward_30}[step] ?? Icons.forward;
     final theme = MaterialVideoControlsThemeData(
       // Off the screen edge: phones round their corners, and the bar should not run into them.
-      seekBarMargin: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+      seekBarMargin: const EdgeInsets.fromLTRB(24, 0, 24, 36),
       seekOnDoubleTap: true,
       seekOnDoubleTapBackwardDuration: Duration(seconds: step),
       seekOnDoubleTapForwardDuration: Duration(seconds: step),
@@ -807,46 +818,69 @@ class _PlayerScreenState extends State<PlayerScreen> {
           bindings: _shortcuts(step),
           child: Focus(
             autofocus: true,
-            child: Stack(
-              children: [
-                MaterialVideoControlsTheme(
-                  normal: theme,
-                  fullscreen: theme,
-                  child: Video(
-                    controller: _video,
-                    fit: _fit,
-                    controls: MaterialVideoControls,
-                    // Hidden: _subtitles draws both lines with their own position and style.
-                    subtitleViewConfiguration: const SubtitleViewConfiguration(visible: false),
-                  ),
-                ),
-                // Our two subtitle lines (media_kit's own view is hidden), and the stats overlay. Neither takes taps.
-                IgnorePointer(
-                  child: StreamBuilder<List<String>>(
-                    stream: _player.stream.subtitle,
-                    initialData: _player.state.subtitle,
-                    builder: (c, snap) => _subtitles(snap.data ?? const []),
-                  ),
-                ),
-                if (_stats) Positioned(top: 64, left: 12, child: IgnorePointer(child: _statsBox())),
-                if (_error.isNotEmpty)
-                  Positioned(
-                    left: 16,
-                    right: 16,
-                    bottom: 96,
-                    child: Material(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(16),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Text(
-                          "Can't play this: $_error. Try \"Open with\" or the software decoder.",
-                          style: const TextStyle(color: Colors.white),
-                        ),
+            child: Transform.translate(
+              offset: Offset(0, _drag),
+              child: Opacity(
+                opacity: (1 - _drag / 500).clamp(0.4, 1.0),
+                child: Stack(
+                  children: [
+                    MaterialVideoControlsTheme(
+                      normal: theme,
+                      fullscreen: theme,
+                      child: Video(
+                        controller: _video,
+                        fit: _fit,
+                        controls: MaterialVideoControls,
+                        // Hidden: _subtitles draws both lines with their own position and style.
+                        subtitleViewConfiguration: const SubtitleViewConfiguration(visible: false),
                       ),
                     ),
-                  ),
-              ],
+                    Positioned.fill(
+                      child: Row(
+                        children: [
+                          const Spacer(),
+                          Expanded(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent, // taps still reach the controls
+                              onVerticalDragUpdate: (d) =>
+                                  setState(() => _drag = (_drag + d.delta.dy).clamp(0.0, 600.0)),
+                              onVerticalDragEnd: _dragEnd,
+                              onVerticalDragCancel: () => setState(() => _drag = 0),
+                            ),
+                          ),
+                          const Spacer(),
+                        ],
+                      ),
+                    ),
+                    // Our two subtitle lines (media_kit's own view is hidden), and the stats overlay. Neither takes taps.
+                    IgnorePointer(
+                      child: StreamBuilder<List<String>>(
+                        stream: _player.stream.subtitle,
+                        initialData: _player.state.subtitle,
+                        builder: (c, snap) => _subtitles(snap.data ?? const []),
+                      ),
+                    ),
+                    if (_stats) Positioned(top: 64, left: 12, child: IgnorePointer(child: _statsBox())),
+                    if (_error.isNotEmpty)
+                      Positioned(
+                        left: 16,
+                        right: 16,
+                        bottom: 96,
+                        child: Material(
+                          color: Colors.black87,
+                          borderRadius: BorderRadius.circular(16),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Text(
+                              "Can't play this: $_error. Try \"Open with\" or the software decoder.",
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
