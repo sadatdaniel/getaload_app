@@ -47,8 +47,8 @@ class Server {
   /// Parses the getaload://pair?v=1&url=..&token=..&fp=.. link from `getaload pair` or the web panel (dmn:// before the rename).
   static Server? fromPairLink(String link) {
     final u = Uri.tryParse(link.trim());
-    if (u == null || (u.scheme != 'getaload' && u.scheme != 'dmn') || u.host != 'pair')
-      return null; // dmn: before the rename
+    final scheme = u?.scheme; // dmn:// links come from servers before the rename
+    if (u == null || (scheme != 'getaload' && scheme != 'dmn') || u.host != 'pair') return null;
     final q = u.queryParameters;
     final url = normalizeUrl(q['url'] ?? '');
     final token = q['token'] ?? '';
