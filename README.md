@@ -1,51 +1,79 @@
-# getaload app
+<p align="center"><img src="web/icons/Icon-192.png" width="120" alt="getaload"></p>
+<h1 align="center">getaload</h1>
+<p align="center"><b>Your own download server, in your pocket.</b><br>The Android app for <a href="https://github.com/sadatdaniel/getaload">getaload</a>.</p>
 
-Flutter app (Android first; the web build is used for testing and may become the server's web panel) for the
-self-hosted [getaload](https://github.com/sadatdaniel/getaload) server.
+<p align="center">
+  <a href="https://github.com/sadatdaniel/getaload_app/releases/latest"><img src="https://img.shields.io/github/v/release/sadatdaniel/getaload_app?label=download" alt="Latest release"></a>
+  <a href="https://github.com/sadatdaniel/getaload_app/actions/workflows/release.yml"><img src="https://github.com/sadatdaniel/getaload_app/actions/workflows/release.yml/badge.svg" alt="Build"></a>
+</p>
 
-## What it does
+<p align="center">
+  <a href="#features">Features</a> · <a href="#install">Install</a> · <a href="#updates">Updates</a> ·
+  <a href="#verify-the-apk">Verify the APK</a> · <a href="https://sadatdaniel.github.io/getaload/privacy.html">Privacy</a>
+</p>
 
-- **Servers and sign-in:** type the server address (or scan/paste the pairing QR/link for the address and certificate),
-  then pick your name and enter your 4-digit PIN; the device gets its own token and stays signed in. Self-signed
-  certificates are pinned by fingerprint (trust on first use). A server without users takes a token instead. Several
-  servers; switch from the header.
-- **Users:** Settings, "Your account" (change PIN, signed-in devices, sign out); the owner also gets "Users" (add,
-  reset PIN, remove). Add-on and Google Drive management are owner-only. Watch progress follows the user across
-  devices (server preferences `w_*`).
-- **Site sign-ins** (Settings): sign in to a site inside the app (Android; the session goes to the server as your
-  cookies, then the phone forgets it) or import a cookies.txt. Each user has their own; only their downloads use them.
-- **Add-ons that block the server** (many refuse cloud servers): adding one offers "Ask from this phone", or tap
-  the server/phone icon on an add-on. The phone then fetches only its JSON (titles, sources); a chosen source
-  always goes to the server, which does all downloading and torrenting (`phone_addons.dart`).
-- **Downloads:** add links (several at once), magnets, video pages, or `.torrent` files (drop or browse, many at
-  once, with an options dialog and "Don't ask again"). Live progress; right click / long press for pause, play
-  while downloading, download order (stream vs standard), verify, remove. Clipboard links are offered on launch.
-- **Media:** every video and song on the server, Continue watching, search.
-- **Files:** grid (GNOME style folders) or list, cached listings, archives open like folders, badges for unfinished
-  and cloud-copied files, context menus (open, play, download to phone, rename, move, copy, copy to Drive, delete),
-  built-in viewer for text, PDF and images.
-- **Player (media_kit/mpv):** tracks, two subtitles with their own position/timing/style, speed, delays, fit,
-  decoder, open with, previous/next in the folder, autoplay next, keyboard shortcuts, stats for nerds (i), resume.
-  Pinned servers stream through a loopback proxy.
-- **Settings (GNOME style):** appearance, player, adding torrents, server (version, certificate), network (torrent
-  port check), storage (leftover partial files), Google Drive.
+> **Beta.** getaload is young and changes quickly. It needs a getaload server, which you run yourself:
+> [set one up](https://github.com/sadatdaniel/getaload#quick-start) on a VPS, a home server or a Raspberry Pi.
 
-## Layout
+## What it is
 
-`lib/`: `main.dart` (app, theme, navigation), `api.dart` + `transport*.dart` (client; pinned on Android, fetch on
-web), `jobs.dart` + `add.dart` (downloads), `files.dart` + `icons.dart` + `viewer.dart` (file manager),
-`library.dart` (media), `watch.dart` (watch progress on the server), `users.dart` (account and users), `player.dart` + `proxy*.dart` + `media.dart` (playback), `settings*.dart` +
-`server_screen.dart` (settings), `ui.dart` (context menus, settings rows, dialogs), `pair.dart` (adding servers and signing in).
+Send a link, a video page, a magnet link or a .torrent to your server, and it downloads there, at full speed, while
+your phone is in your pocket. Then watch, browse or save the results from the app. Several people can share one
+server: everyone signs in with their own name and PIN and sees only their own downloads.
 
-## Develop (on the Windows host, not Docker)
+The app talks to your server, which does the downloading. Your sign-ins, cookies and Google Drive connection are
+stored encrypted on that server, for you alone.
+
+## Features
+
+- **Downloads**: web files, video pages (YouTube and many more sites) with quality, format and subtitles, magnet
+  links and .torrent files. Live progress, pause, resume, play while downloading.
+- **Media**: everything playable on your server in one list, with Continue watching that follows you across devices.
+- **Player**: two subtitles at once with their own style and timing, audio and subtitle tracks, speed, stats,
+  previous and next in the folder, swipe down to close, landscape for landscape videos.
+- **Files**: browse your server like a file manager, open archives like folders, view text, PDF and images, rename,
+  move, copy, delete, download to the phone.
+- **Google Drive**: connect your own Drive and copy finished downloads there.
+- **Site sign-ins**: sign in to a site (e.g. YouTube) inside the app, so your downloads from it work signed in.
+- **Discover** (optional): browse catalogs from Stremio add-ons you choose; anything you play downloads on your server.
+- **Secure by default**: your server's certificate is pinned, every device has its own token, PINs lock after five
+  wrong tries.
+
+## Install
+
+1. Download the APK from the [latest release](https://github.com/sadatdaniel/getaload_app/releases/latest).
+   Most phones: **`…-arm64-v8a.apk`**. Older 32-bit phones: `…-armeabi-v7a.apk`.
+2. Open it and allow installing from your browser or file manager when Android asks.
+3. In the app, enter your server's address (`sudo getaload connect` on the server shows it), accept its certificate,
+   pick your name and enter your PIN.
+
+## Updates
+
+The app updates itself: **Settings → About this app** shows when a new version is out, and **Update** downloads it,
+checks it and hands it to Android. You stay signed in.
+
+## Verify the APK
+
+Releases are signed with the getaload release key. Its SHA-256 certificate fingerprint is:
 
 ```
-flutter analyze
-flutter test
-GETALOAD_TEST_PAIR='getaload://pair?...' flutter test   # also runs the live check against a test server
-flutter build web --release --wasm            # preview: .claude/launch.json "app-web" in the server repo
-flutter build apk --release
+D5:BD:AE:54:7D:FB:4A:3D:5E:D3:42:F8:03:46:14:0D:45:57:2D:49:90:04:F3:39:A9:C3:48:F9:28:72:1A:D0
 ```
 
-Rules from the server repo apply: never commit tokens, pairing links, keystores or personal data; test only
-against our own local servers and content (rule 7).
+Check a download with `apksigner verify --print-certs getaload-*.apk`. Every release also lists the SHA-256 of each
+APK in `checksums.txt`.
+
+## Contributing
+
+Bug reports and ideas are welcome in [issues](https://github.com/sadatdaniel/getaload_app/issues). To build the app
+yourself, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+## Privacy
+
+The app collects nothing. It talks to your own server, to GitHub to check for app updates, and to add-ons you
+chose to ask from the phone (they block servers; the phone only looks up titles, the server still downloads). Details:
+[privacy policy](https://sadatdaniel.github.io/getaload/privacy.html).
+
+## License
+
+Not chosen yet. Until a licence is added, all rights are reserved.
