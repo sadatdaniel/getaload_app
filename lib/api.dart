@@ -1,4 +1,4 @@
-// Client for the download_me_not /v1 API (contract: api/openapi.json in the server repo).
+// Client for the getaload /v1 API (contract: api/openapi.json in the server repo).
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -44,10 +44,11 @@ class Server {
     owner: j['owner'] ?? false,
   );
 
-  /// Parses the dmn://pair?v=1&url=..&token=..&fp=.. link from `dmn pair` or the web panel.
+  /// Parses the getaload://pair?v=1&url=..&token=..&fp=.. link from `getaload pair` or the web panel (dmn:// before the rename).
   static Server? fromPairLink(String link) {
     final u = Uri.tryParse(link.trim());
-    if (u == null || u.scheme != 'dmn' || u.host != 'pair') return null;
+    if (u == null || (u.scheme != 'getaload' && u.scheme != 'dmn') || u.host != 'pair')
+      return null; // dmn: before the rename
     final q = u.queryParameters;
     final url = normalizeUrl(q['url'] ?? '');
     final token = q['token'] ?? '';

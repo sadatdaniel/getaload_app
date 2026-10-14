@@ -5,10 +5,14 @@ import 'package:dmn_app/proxy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('pair link from dmn pair / the web panel', () {
-    final s = Server.fromPairLink('dmn://pair?fp=AB00&token=dmn_x&url=https%3A%2F%2F203.0.113.5%3A8080&v=1')!;
+  test('pair link from getaload pair / the web panel', () {
+    final s = Server.fromPairLink('getaload://pair?fp=AB00&token=getaload_x&url=https%3A%2F%2F203.0.113.5%3A8080&v=1')!;
     expect(s.url, 'https://203.0.113.5:8080');
-    expect(s.token, 'dmn_x');
+    expect(s.token, 'getaload_x');
+    expect(
+      Server.fromPairLink('dmn://pair?token=t&url=https%3A%2F%2Fx.test'),
+      isNotNull,
+    ); // links from before the rename
     expect(s.fp, 'ab00');
     expect(s.name, '203.0.113.5');
     expect(Server.fromPairLink('https://example.com'), isNull);
@@ -33,8 +37,8 @@ void main() {
   });
 
   // Optional end-to-end check against a real server (the dev container), e.g.
-  // DMN_TEST_PAIR='dmn://pair?...' flutter test
-  final pair = Platform.environment['DMN_TEST_PAIR'];
+  // GETALOAD_TEST_PAIR='getaload://pair?...' flutter test
+  final pair = Platform.environment['GETALOAD_TEST_PAIR'];
   test('live server: pinned TLS, jobs, progress', () async {
     final s = Server.fromPairLink(pair!)!;
     final api = Api(s);
@@ -56,5 +60,5 @@ void main() {
     final bad = Api(Server(url: s.url, token: s.token, fp: '00' * 32, name: 'x'));
     await expectLater(bad.call('GET', '/v1/health'), throwsA(isA<ApiError>()));
     bad.close();
-  }, skip: pair == null ? 'set DMN_TEST_PAIR to run' : null);
+  }, skip: pair == null ? 'set GETALOAD_TEST_PAIR to run' : null);
 }

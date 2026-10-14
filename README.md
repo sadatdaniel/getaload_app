@@ -1,7 +1,7 @@
-# download_me_not app
+# getaload app
 
 Flutter app (Android first; the web build is used for testing and may become the server's web panel) for the
-self-hosted [download_me_not](https://github.com/sadatdaniel/download_me_not) server. Private for now.
+self-hosted [getaload](https://github.com/sadatdaniel/getaload) server. Private for now.
 
 ## What it does
 
@@ -42,7 +42,7 @@ web), `jobs.dart` + `add.dart` (downloads), `files.dart` + `icons.dart` + `viewe
 ```
 flutter analyze
 flutter test
-DMN_TEST_PAIR='dmn://pair?...' flutter test   # also runs the live check against a test server
+GETALOAD_TEST_PAIR='getaload://pair?...' flutter test   # also runs the live check against a test server
 flutter build web --release --wasm            # preview: .claude/launch.json "app-web" in the server repo
 flutter build apk --release
 ```

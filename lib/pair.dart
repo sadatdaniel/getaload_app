@@ -1,4 +1,4 @@
-// Adding a server and signing in: server address (or the QR / dmn://pair link from `dmn pair` or the web panel),
+// Adding a server and signing in: server address (or the QR / getaload://pair link from `getaload pair` or the web panel),
 // then name + PIN when the server has users. A server without users takes a token instead.
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -102,12 +102,12 @@ class _AddServerScreenState extends State<AddServerScreen> {
 
   Future<void> _scan() async {
     final link = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const _Scanner()));
-    if (link != null) await _fromLink(link, 'That QR code is not a download_me_not pairing code.');
+    if (link != null) await _fromLink(link, 'That QR code is not a getaload pairing code.');
   }
 
   Future<void> _paste() async {
     final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
-    await _fromLink(text, 'The clipboard has no dmn://pair link.');
+    await _fromLink(text, 'The clipboard has no getaload://pair link.');
   }
 
   Future<void> _continue() async {
@@ -186,7 +186,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
                       Icon(Icons.downloading, size: 40, color: cs.primary),
                       const SizedBox(height: 12),
                       Text(
-                        t == null ? 'download_me_not' : t.name,
+                        t == null ? 'getaload' : t.name,
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
                       ),
@@ -318,7 +318,7 @@ class _ScannerState extends State<_Scanner> {
           final v = capture.barcodes
               .map((b) => b.rawValue)
               .whereType<String>()
-              .where((s) => s.startsWith('dmn://'))
+              .where((s) => s.startsWith('getaload://') || s.startsWith('dmn://'))
               .firstOrNull;
           if (v != null && !_done) {
             _done = true;
