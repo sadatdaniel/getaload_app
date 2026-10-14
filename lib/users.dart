@@ -163,8 +163,8 @@ class _AccountSettingsState extends State<AccountSettings> {
           SettingsGroup(
             title: 'People on this server',
             description:
-                'Each person signs in on their own phone with their name and PIN, and sees only their own downloads '
-                'and files (not even you see them). To switch people on this phone, sign out above.',
+                'Each person signs in on their own phone or browser with their name and PIN, and sees only their own downloads '
+                'and files (not even you see them). To switch people here, sign out above.',
             children: [
               for (final u in _users)
                 SettingsRow(

@@ -194,7 +194,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     final api = Api(s);
     api
         .call('GET', '/v1/addons')
-        .then((a) => addonsEnabled.value = a['enabled'] == true, onError: (_) {})
+        // A block body: the web checks that onError returns the callback's type (here void, not bool).
+        .then((a) {
+          addonsEnabled.value = a['enabled'] == true;
+        }, onError: (_) {})
         .whenComplete(api.close);
   }
 

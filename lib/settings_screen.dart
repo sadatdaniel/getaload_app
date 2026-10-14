@@ -1,4 +1,5 @@
 // Settings, GNOME style: grouped panels of rows. This device first (look, player, adding torrents), then the server.
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'about_app.dart';
@@ -54,16 +55,19 @@ class SettingsView extends StatelessWidget {
                 title: 'Player',
                 description: 'Settings for this device.',
                 children: [
-                  SettingsRow(
-                    title: 'Buffer',
-                    subtitle: '${s.bufferMiB} MiB of memory for reading ahead',
-                    trailing: slider(s.bufferMiB.toDouble(), 16, 512, 31, (v) => s.bufferMiB = v.round()),
-                  ),
-                  SettingsRow(
-                    title: 'Read ahead',
-                    subtitle: '${s.readaheadSecs} seconds',
-                    trailing: slider(s.readaheadSecs.toDouble(), 10, 300, 29, (v) => s.readaheadSecs = v.round()),
-                  ),
+                  // The browser's own player has no buffer or decoder options; those are mpv's.
+                  if (!kIsWeb) ...[
+                    SettingsRow(
+                      title: 'Buffer',
+                      subtitle: '${s.bufferMiB} MiB of memory for reading ahead',
+                      trailing: slider(s.bufferMiB.toDouble(), 16, 512, 31, (v) => s.bufferMiB = v.round()),
+                    ),
+                    SettingsRow(
+                      title: 'Read ahead',
+                      subtitle: '${s.readaheadSecs} seconds',
+                      trailing: slider(s.readaheadSecs.toDouble(), 10, 300, 29, (v) => s.readaheadSecs = v.round()),
+                    ),
+                  ],
                   SettingsRow(
                     title: 'Seek step',
                     trailing: Choice<int>(
@@ -72,17 +76,18 @@ class SettingsView extends StatelessWidget {
                       onChanged: (v) => s.seekStep = v,
                     ),
                   ),
-                  SettingsRow(
-                    title: 'Decoder',
-                    subtitle:
-                        'Hardware saves battery. Compatible also uses the hardware but works around a green, black '
-                        'or broken picture on some phones. Software plays everything, using more battery.',
-                    trailing: Choice<String>(
-                      options: const [('auto-safe', 'Hardware'), ('auto-copy', 'Compatible'), ('no', 'Software')],
-                      value: s.hwdec,
-                      onChanged: (v) => s.hwdec = v,
+                  if (!kIsWeb)
+                    SettingsRow(
+                      title: 'Decoder',
+                      subtitle:
+                          'Hardware saves battery. Compatible also uses the hardware but works around a green, black '
+                          'or broken picture on some phones. Software plays everything, using more battery.',
+                      trailing: Choice<String>(
+                        options: const [('auto-safe', 'Hardware'), ('auto-copy', 'Compatible'), ('no', 'Software')],
+                        value: s.hwdec,
+                        onChanged: (v) => s.hwdec = v,
+                      ),
                     ),
-                  ),
                   SettingsRow(
                     title: 'Subtitle size',
                     subtitle: '${(s.subtitleScale * 100).round()}%',

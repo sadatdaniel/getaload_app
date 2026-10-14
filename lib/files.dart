@@ -1,5 +1,6 @@
 // File manager for one server: browse folders and archives, rename, move, copy, delete, copy to Drive,
 // download to the phone, share a link.
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -119,6 +120,16 @@ class _FilesViewState extends State<FilesView> {
 
   String _join(String dir, String name) => dir == '/' ? '/$name' : '$dir/$name';
   String _parent(String p) => p.lastIndexOf('/') <= 0 ? '/' : p.substring(0, p.lastIndexOf('/'));
+
+  // Pointer event times, not wall-clock: a slow folder load delays handling the second click of a double-click.
+  Duration _down = Duration.zero, _opened = -kDoubleTapTimeout;
+
+  // A double-click opens once: its second click must not open what sits in the same spot of the opened folder.
+  void _tap(FileEntry e) {
+    if (_down - _opened < kDoubleTapTimeout) return;
+    _opened = _down;
+    _open(e);
+  }
 
   void _open(FileEntry e) {
     if (e.dir) return _go(_Place(e.path, e.archive));
@@ -344,43 +355,52 @@ class _FilesViewState extends State<FilesView> {
     );
   }
 
-  Widget _gridTile(FileEntry e) => ContextMenuArea(
-    onMenu: (at) => _menu(e, at),
-    child: InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTapDown: (d) => _lastTap = d.globalPosition,
-      onTap: () => _open(e),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
-        child: Column(
-          children: [
-            EntryIcon(entry: e, size: 64, status: _status[e.path]),
-            const SizedBox(height: 6),
-            Text(
-              e.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
+  Widget _gridTile(FileEntry e) => Listener(
+    onPointerDown: (p) => _down = p.timeStamp,
+    child: ContextMenuArea(
+      onMenu: (at) => _menu(e, at),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTapDown: (d) => _lastTap = d.globalPosition,
+        onTap: () => _tap(e),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+          child: Column(
+            children: [
+              EntryIcon(entry: e, size: 64, status: _status[e.path]),
+              const SizedBox(height: 6),
+              Text(
+                e.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
         ),
       ),
     ),
   );
 
-  Widget _listTile(FileEntry e) => ContextMenuArea(
-    onMenu: (at) => _menu(e, at),
-    child: InkWell(
-      onTapDown: (d) => _lastTap = d.globalPosition,
-      onTap: () => _open(e),
-      child: ListTile(
-        leading: EntryIcon(entry: e, size: 40, status: _status[e.path]),
-        title: Text(e.name, maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: e.dir ? null : Text(fmtBytes(e.size)),
-        trailing: Builder(
-          builder: (b) =>
-              IconButton(icon: const Icon(Icons.more_vert), tooltip: 'Actions', onPressed: () => _menu(e, anchorOf(b))),
+  Widget _listTile(FileEntry e) => Listener(
+    onPointerDown: (p) => _down = p.timeStamp,
+    child: ContextMenuArea(
+      onMenu: (at) => _menu(e, at),
+      child: InkWell(
+        onTapDown: (d) => _lastTap = d.globalPosition,
+        onTap: () => _tap(e),
+        child: ListTile(
+          leading: EntryIcon(entry: e, size: 40, status: _status[e.path]),
+          title: Text(e.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+          subtitle: e.dir ? null : Text(fmtBytes(e.size)),
+          trailing: Builder(
+            builder: (b) => IconButton(
+              icon: const Icon(Icons.more_vert),
+              tooltip: 'Actions',
+              onPressed: () => _menu(e, anchorOf(b)),
+            ),
+          ),
         ),
       ),
     ),
