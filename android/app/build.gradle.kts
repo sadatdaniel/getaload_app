@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -6,9 +8,9 @@ plugins {
 
 // Release signing: CI writes android/key.properties from the repo secrets (the getaload release key). Without it
 // (local builds) the debug key signs, so nothing secret is needed on a dev machine.
-val keyProps = java.util.Properties().apply {
+val keyProps = Properties().apply {
     val f = rootProject.file("key.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
+    if (f.exists()) f.inputStream().use { s -> load(s) }
 }
 
 android {

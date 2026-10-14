@@ -21,10 +21,9 @@ jobs:
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          AL: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           echo "$KS" | base64 -d > android/app/release.jks
-          printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=%s\n' "$PW" "$AL" > android/key.properties
+          printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=getaload\n' "$PW" > android/key.properties
       - run: flutter pub get && flutter analyze && flutter test
       - name: build
         run: |

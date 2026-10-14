@@ -23,6 +23,6 @@ against our own local servers and content (rule 7).
 ## Releases
 
 Tag `vX.Y.Z` and push the tag: `.github/workflows/release.yml` builds the APKs signed with the release key (repo
-secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`), checks the signature and publishes
+secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`; alias `getaload`), checks the signature and publishes
 them with `checksums.txt`. Installed apps find the release under Settings, About this app. Local builds are signed
 with the debug key and cannot update a release install.
