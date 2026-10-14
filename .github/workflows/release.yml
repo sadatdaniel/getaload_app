@@ -36,9 +36,12 @@ jobs:
           cat checksums.txt
       - name: signed with the release key (not the debug fallback)
         run: |
+          # apksigner reads Android's APK signatures (keytool only sees old JAR signing).
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           for f in build/app/outputs/flutter-apk/getaload-*.apk; do
-            keytool -printcert -jarfile "$f" | grep -q "D5:BD:AE:54:7D:FB:4A:3D:5E:D3:42:F8:03:46:14:0D:45:57:2D:49:90:04:F3:39:A9:C3:48:F9:28:72:1A:D0" \
-              || { echo "$f is not signed with the release key"; exit 1; }
+            "$APKSIGNER" verify --print-certs "$f" \
+              | grep -q "SHA-256 digest: d5bdae547dfb4a3d5ed342f80346140d45572d499004f339a9c348f928721ad0" \
+              || { echo "$f is not signed with the release key:"; "$APKSIGNER" verify --print-certs "$f"; exit 1; }
           done
       - name: publish
         if: github.ref_type == 'tag'
