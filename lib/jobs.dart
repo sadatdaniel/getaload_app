@@ -57,6 +57,7 @@ class _JobsViewState extends State<JobsView> {
         });
       }
     } catch (e) {
+      if (e is ApiError && e.status == 401) _refresh?.cancel(); // a dead token: stop asking until signed in again
       if (mounted) setState(() => _error = e.toString());
     }
   }
