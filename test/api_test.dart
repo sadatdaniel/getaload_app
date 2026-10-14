@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:dmn_app/api.dart';
-import 'package:dmn_app/proxy.dart';
+import 'package:getaload/api.dart';
+import 'package:getaload/proxy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

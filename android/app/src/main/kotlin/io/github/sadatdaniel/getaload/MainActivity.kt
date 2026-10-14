@@ -1,4 +1,4 @@
-package io.github.sadatdaniel.dmn_app
+package io.github.sadatdaniel.getaload
 
 import android.webkit.CookieManager
 import io.flutter.embedding.android.FlutterActivity

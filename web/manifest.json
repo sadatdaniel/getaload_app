@@ -1,6 +1,6 @@
 {
-    "name": "dmn_app",
-    "short_name": "dmn_app",
+    "name": "getaload",
+    "short_name": "getaload",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

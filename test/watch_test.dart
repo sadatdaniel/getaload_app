@@ -1,5 +1,5 @@
-import 'package:dmn_app/api.dart';
-import 'package:dmn_app/settings.dart';
+import 'package:getaload/api.dart';
+import 'package:getaload/settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

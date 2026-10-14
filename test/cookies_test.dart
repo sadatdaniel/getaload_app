@@ -1,4 +1,4 @@
-import 'package:dmn_app/cookies_settings.dart';
+import 'package:getaload/cookies_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
