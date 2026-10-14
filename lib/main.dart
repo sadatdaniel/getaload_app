@@ -37,7 +37,7 @@ class App extends StatelessWidget {
     return ListenableBuilder(
       listenable: s,
       builder: (_, _) => MaterialApp(
-        title: 'getaload',
+        title: 'GetALoad',
         theme: _theme(seed, Brightness.light),
         darkTheme: _theme(seed, Brightness.dark),
         themeMode: {'dark': ThemeMode.dark, 'system': ThemeMode.system}[s.theme] ?? ThemeMode.light,
@@ -357,7 +357,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                 children: [
                   Icon(Icons.downloading, color: cs.primary),
                   const SizedBox(width: 8),
-                  const Text('getaload'),
+                  const Text('GetALoad'),
                   const SizedBox(width: 32),
                   for (final (i, (_, _, label)) in dests.indexed)
                     _NavLink(label, i == _tab, () => setState(() => _tab = i)),

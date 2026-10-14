@@ -1,4 +1,4 @@
-// Client for the getaload /v1 API (contract: api/openapi.json in the server repo).
+// Client for the GetALoad /v1 API (contract: api/openapi.json in the server repo).
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';

@@ -102,7 +102,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
 
   Future<void> _scan() async {
     final link = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const _Scanner()));
-    if (link != null) await _fromLink(link, 'That QR code is not a getaload pairing code.');
+    if (link != null) await _fromLink(link, 'That QR code is not a GetALoad pairing code.');
   }
 
   Future<void> _paste() async {
@@ -186,7 +186,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
                       Icon(Icons.downloading, size: 40, color: cs.primary),
                       const SizedBox(height: 12),
                       Text(
-                        t == null ? 'getaload' : t.name,
+                        t == null ? 'GetALoad' : t.name,
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
                       ),

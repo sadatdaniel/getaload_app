@@ -48,7 +48,7 @@ class _AboutAppState extends State<AboutApp> {
       body: SingleChildScrollView(
         child: Text(
           '${r.notes.trim().isEmpty ? '' : '${r.notes.trim()}\n\n'}'
-          'Android asks once to allow updates from getaload, then shows "Update this app?". You stay signed in.',
+          'Android asks once to allow updates from GetALoad, then shows "Update this app?". You stay signed in.',
         ),
       ),
       action: 'Download and update',
@@ -76,7 +76,7 @@ class _AboutAppState extends State<AboutApp> {
       title: 'About this app',
       children: [
         SettingsRow(
-          title: 'getaload',
+          title: 'GetALoad',
           subtitle: _status.isNotEmpty
               ? _status
               : !_canUpdate
