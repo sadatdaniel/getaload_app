@@ -1,4 +1,5 @@
-// Settings for the signed-in user (PIN, devices, sign out) and, for the owner, the household's users.
+// Settings for the signed-in user (PIN, devices, sign out), server control on this device (an admin key from a
+// `getaload admin` code), and, with server control, the household's users.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -17,8 +18,9 @@ class AccountSettings extends StatefulWidget {
 
 class _AccountSettingsState extends State<AccountSettings> {
   late final Api _api = Api(widget.server);
+  late final Api _admin = Api(widget.server.asAdmin); // adding and removing people, other people's PINs
   String _me = ''; // my user id
-  List<Map<String, dynamic>> _devices = [], _users = [];
+  List<Map<String, dynamic>> _devices = [], _users = [], _adminDevices = [];
 
   @override
   void initState() {
@@ -29,24 +31,96 @@ class _AccountSettingsState extends State<AccountSettings> {
   @override
   void dispose() {
     _api.close();
+    _admin.close();
     super.dispose();
   }
+
+  List<Map<String, dynamic>> _list(dynamic v) => (v as List? ?? []).cast<Map<String, dynamic>>();
 
   Future<void> _load() async {
     try {
       final me = await _api.call('GET', '/v1/me');
-      final ds = ((await _api.call('GET', '/v1/devices')) as List? ?? []).cast<Map<String, dynamic>>();
-      final us = widget.server.owner
-          ? ((await _api.call('GET', '/v1/users')) as List? ?? []).cast<Map<String, dynamic>>()
-          : <Map<String, dynamic>>[];
+      final ds = _list(await _api.call('GET', '/v1/devices'));
+      final admin = widget.server.adminKey.isNotEmpty;
+      final us = admin ? _list(await _api.call('GET', '/v1/users')) : <Map<String, dynamic>>[];
+      var ads = <Map<String, dynamic>>[];
+      if (admin) {
+        try {
+          ads = _list(await _admin.call('GET', '/v1/admin/devices'));
+        } catch (_) {
+          // The key was taken away (another device or the command line): offer to forget it here.
+          ads = [
+            {'name': 'This device (no longer accepted)', 'current': true},
+          ];
+        }
+      }
       if (mounted) {
         setState(() {
           _me = me['id'];
           _devices = ds;
           _users = us;
+          _adminDevices = ads;
         });
       }
-    } catch (_) {} // an older server, or offline: the rows stay empty
+    } catch (_) {} // an older server, offline, or a key taken away elsewhere: the rows stay as they were
+  }
+
+  // Trades a one-time code from `sudo getaload admin` for this device's admin key.
+  Future<void> _getControl() async {
+    final code = TextEditingController();
+    final ok = await confirm(
+      context,
+      title: 'Server control',
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('On the server, run "sudo getaload admin" and enter the code it shows. It works once.'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: code,
+            autofocus: true,
+            autocorrect: false,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(labelText: 'Code', hintText: 'XXXX-XXXX'),
+          ),
+        ],
+      ),
+      action: 'Get control',
+    );
+    if (!ok) return;
+    try {
+      final out = await _api.call('POST', '/v1/admin/claim', {
+        'code': code.text.trim(),
+        'device': await widget.servers.deviceName(),
+      });
+      await widget.servers.add(widget.server.copyWith(adminKey: out['token'])); // settings rebuild with the key
+      _toast('This device now controls ${widget.server.name}');
+    } catch (e) {
+      _toast(e.toString());
+    }
+  }
+
+  // Takes the admin key from a device; for this one, also forgets it here (even if the server already did).
+  Future<void> _removeControl(Map<String, dynamic> d) async {
+    final mine = d['current'] == true;
+    final ok = await confirm(
+      context,
+      title: mine ? 'Give up server control here?' : 'Take server control from ${d['name']}?',
+      body: Text(
+        mine ? 'Your downloads and files stay. A new code brings control back.' : 'Use this for a lost device.',
+      ),
+      action: 'Remove',
+      danger: true,
+    );
+    if (!ok) return;
+    try {
+      await _admin.call('DELETE', '/v1/admin/devices/${Uri.encodeComponent(d['name'])}');
+    } catch (e) {
+      if (!mine) return _toast(e.toString());
+    }
+    if (mine) return widget.servers.add(widget.server.copyWith(adminKey: ''));
+    await _load();
   }
 
   void _toast(String m) {
@@ -99,15 +173,16 @@ class _AccountSettingsState extends State<AccountSettings> {
     final r = await _pinDialog(context, 'Add a person', name: name);
     if (r == null) return;
     await _act(
-      () => _api.call('POST', '/v1/users', {'name': name.text.trim(), 'pin': r.pin}),
+      () => _admin.call('POST', '/v1/users', {'name': name.text.trim(), 'pin': r.pin}),
       '${name.text.trim()} can now sign in on their own phone: server ${widget.server.url}, their name and this PIN',
     );
   }
 
   Future<void> _resetPin(Map<String, dynamic> u) async {
-    final r = await _pinDialog(context, 'New PIN for ${u['name']}', current: u['id'] == _me);
+    if (u['id'] == _me) return _changePin(); // your own always needs the current one
+    final r = await _pinDialog(context, 'New PIN for ${u['name']}');
     if (r == null) return;
-    await _act(() => _api.call('PUT', '/v1/users/${u['id']}/pin', {'pin': r.pin, 'current': r.current}), 'PIN changed');
+    await _act(() => _admin.call('PUT', '/v1/admin/users/${u['id']}/pin', {'pin': r.pin}), 'PIN changed');
   }
 
   Future<void> _removeUser(Map<String, dynamic> u) async {
@@ -134,7 +209,7 @@ class _AccountSettingsState extends State<AccountSettings> {
       danger: true,
     );
     if (!ok) return;
-    await _act(() => _api.call('DELETE', '/v1/users/${u['id']}?deleteFiles=$files'), '${u['name']} removed');
+    await _act(() => _admin.call('DELETE', '/v1/users/${u['id']}?deleteFiles=$files'), '${u['name']} removed');
   }
 
   @override
@@ -159,7 +234,31 @@ class _AccountSettingsState extends State<AccountSettings> {
               ),
           ],
         ),
-        if (widget.server.owner)
+        SettingsGroup(
+          title: 'Server control',
+          description: widget.server.adminKey.isEmpty
+              ? 'Adding people, updates and add-ons need server control. Your own downloads, files and Google Drive '
+                    'never do.'
+              : 'This device can add people, update the server and change add-ons. Devices with control:',
+          children: [
+            if (widget.server.adminKey.isEmpty)
+              SettingsRow(
+                title: 'Get server control',
+                subtitle: 'With a code from "sudo getaload admin" on the server',
+                onTap: _getControl,
+              ),
+            for (final d in _adminDevices)
+              SettingsRow(
+                title: d['name'],
+                subtitle: d['current'] == true ? 'This device' : null,
+                trailing: TextButton(
+                  onPressed: () => _removeControl(d),
+                  child: Text('Remove', style: TextStyle(color: cs.error)),
+                ),
+              ),
+          ],
+        ),
+        if (widget.server.adminKey.isNotEmpty)
           SettingsGroup(
             title: 'People on this server',
             description:
@@ -169,7 +268,6 @@ class _AccountSettingsState extends State<AccountSettings> {
               for (final u in _users)
                 SettingsRow(
                   title: u['name'],
-                  subtitle: u['owner'] == true ? 'Owner' : null,
                   trailing: PopupMenuButton<String>(
                     tooltip: 'More',
                     onSelected: (v) => v == 'pin' ? _resetPin(u) : _removeUser(u),

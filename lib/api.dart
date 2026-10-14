@@ -13,7 +13,7 @@ class Server {
   final String fp; // hex SHA-256 of the certificate; empty = normal TLS verification (or plain HTTP)
   final String name;
   final String user; // who this device signed in as (empty: a server without users, signed in with a token)
-  final bool owner; // the owner manages users
+  final String adminKey; // server control on this device (`getaload admin` code traded for a key); empty = none
 
   const Server({
     required this.url,
@@ -21,19 +21,32 @@ class Server {
     this.fp = '',
     required this.name,
     this.user = '',
-    this.owner = false,
+    this.adminKey = '',
   });
 
-  Server copyWith({String? token, String? fp, String? name, String? user, bool? owner}) => Server(
+  /// Has server control: an admin key, or a token without a user (a server without users).
+  bool get admin => adminKey.isNotEmpty || user.isEmpty;
+
+  /// This server as seen with the admin key, for server-wide changes (the sign-in token reaches only your own data).
+  Server get asAdmin => adminKey.isEmpty ? this : copyWith(token: adminKey);
+
+  Server copyWith({String? token, String? fp, String? name, String? user, String? adminKey}) => Server(
     url: url,
     token: token ?? this.token,
     fp: fp ?? this.fp,
     name: name ?? this.name,
     user: user ?? this.user,
-    owner: owner ?? this.owner,
+    adminKey: adminKey ?? this.adminKey,
   );
 
-  Map<String, dynamic> toJson() => {'url': url, 'token': token, 'fp': fp, 'name': name, 'user': user, 'owner': owner};
+  Map<String, dynamic> toJson() => {
+    'url': url,
+    'token': token,
+    'fp': fp,
+    'name': name,
+    'user': user,
+    'adminKey': adminKey,
+  };
 
   factory Server.fromJson(Map<String, dynamic> j) => Server(
     url: j['url'],
@@ -41,7 +54,7 @@ class Server {
     fp: j['fp'] ?? '',
     name: j['name'] ?? j['url'],
     user: j['user'] ?? '',
-    owner: j['owner'] ?? false,
+    adminKey: j['adminKey'] ?? '',
   );
 
   static String? normalizeUrl(String s) {

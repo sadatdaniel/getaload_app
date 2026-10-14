@@ -5,10 +5,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('server user survives a save', () {
-    const s = Server(url: 'https://x.test', token: 't', name: 'x', user: 'Alice', owner: true);
+    const s = Server(url: 'https://x.test', token: 't', name: 'x', user: 'Alice', adminKey: 'k');
     final back = Server.fromJson(s.toJson());
     expect(back.user, 'Alice');
-    expect(back.owner, isTrue);
+    expect(back.adminKey, 'k');
+    expect(back.asAdmin.token, 'k'); // server-wide changes use the admin key
+    expect(back.copyWith(adminKey: '').asAdmin.token, 't');
+    expect(back.copyWith(adminKey: '').admin, isFalse); // a signed-in user without a key
     expect(Server.fromJson({'url': 'u', 'token': 't'}).user, ''); // saved before users existed
   });
 

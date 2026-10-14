@@ -300,7 +300,11 @@ class _HomeState extends State<Home> {
                     MediaView(key: ValueKey('media${s.url}${s.token.hashCode}'), servers: servers, server: s),
                     FilesView(key: ValueKey('files${s.url}${s.token.hashCode}'), server: s),
                     if (discover) DiscoverView(key: ValueKey('disc${s.url}${s.token.hashCode}'), server: s),
-                    SettingsView(key: ValueKey('set${s.url}${s.token.hashCode}'), servers: servers, server: s),
+                    SettingsView(
+                      key: ValueKey('set${s.url}${s.token.hashCode}${s.adminKey.hashCode}'),
+                      servers: servers,
+                      server: s,
+                    ),
                   ],
                 ),
               ),

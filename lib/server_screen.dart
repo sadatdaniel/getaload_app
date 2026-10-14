@@ -24,6 +24,7 @@ class ServerScreen extends StatefulWidget {
 
 class _ServerScreenState extends State<ServerScreen> {
   late final Api _api = Api(widget.server);
+  late final Api _admin = Api(widget.server.asAdmin); // server-wide changes take the admin key
   String _version = '';
   Map<String, dynamic>? _drive; // the gdrive provider as /v1/providers reports it
   Map<String, dynamic>? _myDrive; // GET /v1/me/drive: {connected, configured, status, reason}; null on older servers
@@ -45,6 +46,7 @@ class _ServerScreenState extends State<ServerScreen> {
   void dispose() {
     _poll?.cancel();
     _api.close();
+    _admin.close();
     _addonUrl.dispose();
     super.dispose();
   }
@@ -148,7 +150,7 @@ class _ServerScreenState extends State<ServerScreen> {
     );
     if (!ok || id.text.trim().isEmpty) return;
     try {
-      await _api.call('PUT', '/v1/providers/gdrive/settings', {
+      await _admin.call('PUT', '/v1/providers/gdrive/settings', {
         'clientId': id.text.trim(),
         'clientSecret': sec.text.trim(),
       });
@@ -164,8 +166,8 @@ class _ServerScreenState extends State<ServerScreen> {
   Future<void> _connectDrive() async {
     try {
       final s = widget.server;
-      if (_drive?['enabled'] != true && (s.user.isEmpty || s.owner)) {
-        await _api.call('PUT', '/v1/providers/gdrive/enabled', {'enabled': true});
+      if (_drive?['enabled'] != true && s.admin) {
+        await _admin.call('PUT', '/v1/providers/gdrive/enabled', {'enabled': true});
       }
       final si = await _api.call('POST', '/v1/providers/gdrive/signin') as Map<String, dynamic>;
       setState(() => _signin = si);
@@ -253,7 +255,7 @@ class _ServerScreenState extends State<ServerScreen> {
     if (!ok) return;
     setState(() => _updating = true);
     try {
-      await _api.call('POST', '/v1/update/apply');
+      await _admin.call('POST', '/v1/update/apply');
       for (var i = 0; i < 45; i++) {
         await Future.delayed(const Duration(seconds: 2));
         try {
@@ -296,7 +298,7 @@ class _ServerScreenState extends State<ServerScreen> {
 
   Future<void> _setAddons(bool on) async {
     try {
-      await _api.call('PUT', '/v1/addons/enabled', {'enabled': on});
+      await _admin.call('PUT', '/v1/addons/enabled', {'enabled': on});
     } catch (e) {
       _toast(e.toString()); // e.g. this device's token is not admin
     }
@@ -310,7 +312,7 @@ class _ServerScreenState extends State<ServerScreen> {
   Future<void> _addAddon(String url) async {
     if (url.trim().isEmpty) return;
     try {
-      final a = await _api.call('POST', '/v1/addons', {'url': url.trim()});
+      final a = await _admin.call('POST', '/v1/addons', {'url': url.trim()});
       _addonUrl.clear();
       _toast('Added ${a['manifest']?['name'] ?? 'the add-on'}');
     } on ApiError catch (e) {
@@ -337,7 +339,7 @@ class _ServerScreenState extends State<ServerScreen> {
     base = base.replaceFirst(RegExp(r'/manifest\.json$'), '').replaceFirst(RegExp(r'/$'), '');
     try {
       final m = await PhoneAddons.manifest(base); // the phone must reach it, or there is no point
-      await _api.call('POST', '/v1/addons', {'url': base, 'phone': true});
+      await _admin.call('POST', '/v1/addons', {'url': base, 'phone': true});
       _addonUrl.clear();
       _toast('Added ${m['name']} (asked from this phone)');
     } catch (e) {
@@ -348,7 +350,7 @@ class _ServerScreenState extends State<ServerScreen> {
   Future<void> _setPhone(String url, bool phone) async {
     try {
       if (phone) await PhoneAddons.manifest(url);
-      await _api.call('PUT', '/v1/addons/phone', {'url': url, 'phone': phone});
+      await _admin.call('PUT', '/v1/addons/phone', {'url': url, 'phone': phone});
     } catch (e) {
       _toast(e.toString());
     }
@@ -381,7 +383,7 @@ class _ServerScreenState extends State<ServerScreen> {
 
   Future<void> _toggleAddon(String url, bool on) async {
     try {
-      await _api.call('PUT', '/v1/addons/state', {'url': url, 'enabled': on});
+      await _admin.call('PUT', '/v1/addons/state', {'url': url, 'enabled': on});
     } catch (e) {
       _toast(e.toString());
     }
@@ -390,7 +392,7 @@ class _ServerScreenState extends State<ServerScreen> {
 
   Future<void> _removeAddon(String url) async {
     try {
-      await _api.call('DELETE', '/v1/addons?url=${Uri.encodeQueryComponent(url)}');
+      await _admin.call('DELETE', '/v1/addons?url=${Uri.encodeQueryComponent(url)}');
     } catch (e) {
       _toast(e.toString());
     }
@@ -477,7 +479,7 @@ class _ServerScreenState extends State<ServerScreen> {
   @override
   Widget build(BuildContext context) {
     final s = widget.server;
-    final admin = s.user.isEmpty || s.owner; // add-ons, Drive set-up and updates are server-wide: the owner
+    final admin = s.admin; // add-ons, Drive set-up and updates are server-wide: a device with server control
     final installed = {for (final a in (_addons?['addons'] as List?) ?? []) a['url'] as String};
     final p = _ports;
     final cs = Theme.of(context).colorScheme;

@@ -120,7 +120,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
       final fp = await Api.probeFingerprint(url);
       final saved = widget.servers.list.where((s) => s.url == url).firstOrNull;
       if (fp.isNotEmpty && saved?.fp != fp && mounted) {
-        // Trust on first use, but only after the owner compares it with what the server printed.
+        // Trust on first use, but only after the person compares it with what the server printed.
         final ok = await showDialog<bool>(
           context: context,
           builder: (c) => AlertDialog(
@@ -163,7 +163,9 @@ class _AddServerScreenState extends State<AddServerScreen> {
         _pin.clear();
       }
       final u = out['user'] as Map<String, dynamic>;
-      await _save(s.copyWith(token: out['token'], user: u['name'], owner: u['owner'] ?? false));
+      // The admin key belongs to this device, not to whoever signs in: it stays.
+      final key = widget.servers.list.where((x) => x.url == s.url).firstOrNull?.adminKey ?? '';
+      await _save(s.copyWith(token: out['token'], user: u['name'], adminKey: key));
     });
   }
 
