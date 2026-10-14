@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'add.dart';
 import 'api.dart';
+import 'settings.dart';
 import 'launch.dart';
 import 'media.dart';
 import 'ui.dart';
@@ -28,6 +29,7 @@ class _JobsViewState extends State<JobsView> {
   @override
   void initState() {
     super.initState();
+    _jobs = AppSettings.instance.savedList(_key)?.cast<Map<String, dynamic>>(); // last time's list, at once
     _load();
     _listen();
     _refresh = Timer.periodic(const Duration(seconds: 10), (_) => _load());
@@ -42,9 +44,12 @@ class _JobsViewState extends State<JobsView> {
     super.dispose();
   }
 
+  String get _key => '${widget.server.url}|${widget.server.user}|jobs'; // per server and user
+
   Future<void> _load() async {
     try {
       final j = await _api.jobs();
+      AppSettings.instance.saveList(_key, j.take(200).toList());
       if (mounted) {
         setState(() {
           _jobs = j;

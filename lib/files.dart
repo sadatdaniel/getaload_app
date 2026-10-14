@@ -54,18 +54,24 @@ class _FilesViewState extends State<FilesView> {
     super.dispose();
   }
 
-  String _key(_Place p) => '${widget.server.url}|${p.archive}|${p.path}';
+  // Per server and user: a shared device never shows one person's folders to another.
+  String _key(_Place p) => '${widget.server.url}|${widget.server.user}|files|${p.archive}|${p.path}';
+
+  // The folder as it was last time (saved between visits), shown until the server answers.
+  List<FileEntry>? _saved(_Place p) =>
+      AppSettings.instance.savedList(_key(p))?.map((e) => FileEntry.fromJson(e, archive: p.archive)).toList();
 
   Future<void> _load() async {
     final h = _here;
     setState(() {
       _error = '';
-      _entries = _cache[_key(h)] ?? _entries;
+      _entries = _cache[_key(h)] ?? _saved(h) ?? _entries;
     });
     try {
       final es = h.archive == null ? await _api.list(h.path) : await _api.listArchive(h.archive!, h.path);
       es.sort((a, b) => a.dir != b.dir ? (a.dir ? -1 : 1) : a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       _cache[_key(h)] = es;
+      AppSettings.instance.saveList(_key(h), [for (final e in es.take(500)) e.toJson()]);
       if (!mounted || _here != h) return; // the user moved on meanwhile
       setState(() => _entries = es);
       _loadStatus();

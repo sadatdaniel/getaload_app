@@ -27,7 +27,7 @@ class _MediaViewState extends State<MediaView> {
   @override
   void initState() {
     super.initState();
-    _items = _cache[widget.server.url];
+    _items = _cache[_key] ?? AppSettings.instance.savedList(_key)?.map((e) => FileEntry.fromJson(e)).toList();
     _load();
     _s.addListener(_changed);
     Api.filesChanged.addListener(_load); // new downloads appear without a refresh
@@ -41,6 +41,8 @@ class _MediaViewState extends State<MediaView> {
     super.dispose();
   }
 
+  String get _key => '${widget.server.url}|${widget.server.user}|media'; // per server and user
+
   void _changed() => mounted ? setState(() {}) : null;
 
   Future<void> _load() async {
@@ -49,7 +51,8 @@ class _MediaViewState extends State<MediaView> {
       final l = ((await _api.call('GET', '/v1/media?limit=5000')) as List? ?? [])
           .map((e) => FileEntry.fromJson(e))
           .toList();
-      _cache[widget.server.url] = l;
+      _cache[_key] = l;
+      AppSettings.instance.saveList(_key, [for (final e in l.take(1000)) e.toJson()]); // shown at once next time
       if (mounted) {
         setState(() {
           _items = l;

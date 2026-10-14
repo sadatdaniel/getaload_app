@@ -1,5 +1,6 @@
 // Adding a server and signing in: server address (or the QR / getaload://pair link from `getaload pair` or the web panel),
 // then name + PIN when the server has users. A server without users takes a token instead.
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -31,7 +32,27 @@ class _AddServerScreenState extends State<AddServerScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialUrl != null) WidgetsBinding.instance.addPostFrameCallback((_) => _continue());
+    if (widget.initialUrl != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _continue());
+    } else if (kIsWeb && widget.first) {
+      _sameOrigin();
+    }
+  }
+
+  // The web client served by a GetALoad server: that server is the one to sign in to, so skip the address step.
+  Future<void> _sameOrigin() async {
+    final here = Uri.base.origin;
+    final api = Api(Server(url: here, token: '', name: Uri.base.host));
+    try {
+      await api.call('GET', '/v1/health');
+      if (!mounted) return;
+      _url.text = here;
+      await _run(() => _connect(Server(url: here, token: '', name: Uri.base.host)));
+    } catch (_) {
+      // a dev server or another site: the address step stays
+    } finally {
+      api.close();
+    }
   }
 
   @override

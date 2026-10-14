@@ -134,8 +134,37 @@ class AppSettings extends ChangeNotifier {
     await _set('recent', jsonEncode(l.take(30).toList()));
   }
 
+  // ---- last-known lists: shown at once on the next start, then refreshed from the server ----
+
+  static const _maxLists = 40; // browser storage is small (about 5 MB): only the most recent lists are kept
+
+  /// A list saved by [saveList], or null. Keys start with `server|user|` so nobody sees another user's lists.
+  List<dynamic>? savedList(String key) {
+    final s = _p.getString('list:$key');
+    if (s == null) return null;
+    try {
+      return jsonDecode(s) as List<dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveList(String key, List<dynamic> items) async {
+    final keys = (_p.getStringList('list-keys') ?? [])
+      ..remove(key)
+      ..add(key);
+    while (keys.length > _maxLists) {
+      await _p.remove('list:${keys.removeAt(0)}');
+    }
+    await _p.setString('list:$key', jsonEncode(items));
+    await _p.setStringList('list-keys', keys);
+  }
+
   /// Forgets positions and recent items of one server (another user signed in on this device).
   Future<void> forgetServer(String server) async {
+    for (final k in (_p.getStringList('list-keys') ?? []).where((k) => k.startsWith('$server|')).toList()) {
+      await _p.remove('list:$k');
+    }
     for (final k in _p.getKeys().where((k) => k.startsWith('pos:server:$server:')).toList()) {
       await _p.remove(k);
     }

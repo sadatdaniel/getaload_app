@@ -93,6 +93,14 @@ class FileEntry {
     this.archive,
   });
 
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'path': path,
+    'dir': dir,
+    'size': size,
+    if (modTime != null) 'modTime': modTime!.toIso8601String(),
+  };
+
   factory FileEntry.fromJson(Map<String, dynamic> j, {String? archive}) => FileEntry(
     name: j['name'],
     path: j['path'],
