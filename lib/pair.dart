@@ -1,12 +1,12 @@
 // Adding a server and signing in: server address (or the QR / getaload://pair link from `getaload pair` or the web panel),
 // then name + PIN when the server has users. A server without users takes a token instead.
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'api.dart';
 import 'servers.dart';
+import 'ui.dart';
 
 class AddServerScreen extends StatefulWidget {
   final Servers servers;
@@ -243,14 +243,14 @@ class _AddServerScreenState extends State<AddServerScreen> {
         ],
       ),
     ),
-    // The web build has no QR scanning (that is for a phone); pasting the link works there.
-    if (!kIsWeb)
+    // QR scanning is for phones; on the web and desktops the link is pasted.
+    if (isPhone)
       OutlinedButton.icon(
         onPressed: _busy ? null : _scan,
         icon: const Icon(Icons.qr_code_scanner),
         label: const Text('Scan QR code'),
       ),
-    if (!kIsWeb) const SizedBox(height: 8),
+    if (isPhone) const SizedBox(height: 8),
     OutlinedButton.icon(
       onPressed: _busy ? null : _paste,
       icon: const Icon(Icons.content_paste),

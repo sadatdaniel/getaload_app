@@ -1,6 +1,7 @@
 // Settings, GNOME style: grouped panels of rows. This device first (look, player, adding torrents), then the server.
 import 'package:flutter/material.dart';
 
+import 'about_app.dart';
 import 'api.dart';
 import 'server_screen.dart';
 import 'servers.dart';
@@ -112,6 +113,7 @@ class SettingsView extends StatelessWidget {
             ],
           ),
         ),
+        const AboutApp(),
         if (server.user.isNotEmpty)
           AccountSettings(key: ValueKey('acc${server.url}${server.token}'), servers: servers, server: server),
         ServerScreen(key: ValueKey('srv${server.url}'), servers: servers, server: server),

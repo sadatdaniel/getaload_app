@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'media.dart';
 import 'proxy.dart' if (dart.library.js_interop) 'proxy_web.dart';
 import 'settings.dart';
+import 'ui.dart';
 import 'watch.dart';
 
 bool _mediaKitReady = false;
@@ -82,7 +83,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _orient(bool landscape) {
-    if (kIsWeb) return;
+    if (!isPhone) return; // desktops and the web keep their window as it is
     _landscape = landscape;
     SystemChrome.setPreferredOrientations(
       landscape ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight] : [DeviceOrientation.portraitUp],
@@ -128,7 +129,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _statTimer?.cancel();
     _save(force: true);
     _player.dispose();
-    if (!kIsWeb) SystemChrome.setPreferredOrientations([]); // back to the app's normal orientation
+    if (isPhone) SystemChrome.setPreferredOrientations([]); // back to the app's normal orientation
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
@@ -793,7 +794,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       bottomButtonBar: [
         const MaterialPositionIndicator(),
         const Spacer(),
-        if (!kIsWeb)
+        if (isPhone)
           MaterialCustomButton(
             icon: const Icon(Icons.screen_rotation),
             onPressed: () {

@@ -1,0 +1,53 @@
+# Signed Android release: a tag vX.Y.Z builds the APKs with the getaload release key (repo secrets), checks that
+# they really carry that key, and publishes them with checksums.txt. The app's self-update reads this release.
+# Run by hand (workflow_dispatch) it only builds and uploads the APKs as an artifact.
+name: release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: subosito/flutter-action@v2
+        with: { flutter-version: "3.47.5", channel: stable, cache: true }
+      - name: release key (from secrets; never stored in the repo)
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          AL: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "$KS" | base64 -d > android/app/release.jks
+          printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=%s\n' "$PW" "$AL" > android/key.properties
+      - run: flutter pub get && flutter analyze && flutter test
+      - name: build
+        run: |
+          V=${GITHUB_REF_NAME#v}; [ "$GITHUB_REF_TYPE" = tag ] || V=0.0.0-dev
+          flutter build apk --release --split-per-abi --build-name="$V" --build-number=${{ github.run_number }} \
+            --dart-define=APP_VERSION="$V"
+          cd build/app/outputs/flutter-apk
+          for f in app-*-release.apk; do a=${f#app-}; mv "$f" "getaload-$V-${a%-release.apk}.apk"; done
+          sha256sum getaload-*.apk > checksums.txt
+          cat checksums.txt
+      - name: signed with the release key (not the debug fallback)
+        run: |
+          for f in build/app/outputs/flutter-apk/getaload-*.apk; do
+            keytool -printcert -jarfile "$f" | grep -q "D5:BD:AE:54:7D:FB:4A:3D:5E:D3:42:F8:03:46:14:0D:45:57:2D:49:90:04:F3:39:A9:C3:48:F9:28:72:1A:D0" \
+              || { echo "$f is not signed with the release key"; exit 1; }
+          done
+      - name: publish
+        if: github.ref_type == 'tag'
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          gh release create "$GITHUB_REF_NAME" build/app/outputs/flutter-apk/getaload-*.apk build/app/outputs/flutter-apk/checksums.txt \
+            --title "getaload app $GITHUB_REF_NAME" \
+            --notes "Android app for getaload. Most phones: the arm64-v8a APK. Signed with the getaload release key (SHA-256 D5:BD:AE:54:…:28:72:1A:D0)."
+      - if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with: { name: apks, path: build/app/outputs/flutter-apk/getaload-*.apk }

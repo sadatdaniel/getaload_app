@@ -1,4 +1,5 @@
 // Shared desktop-style UI: context menus (macOS/GNOME/Windows-like), GNOME-style settings groups, dialogs.
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// One row of a context menu. [checked] draws a check mark (for choices such as download mode).
@@ -309,3 +310,7 @@ class FieldWithButton extends StatelessWidget {
           ),
   );
 }
+
+/// Android or iOS: phone-only features (QR scanning, screen rotation) are hidden on the web and on desktops.
+final isPhone =
+    !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);

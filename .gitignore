@@ -49,3 +49,8 @@ app.*.map.json
 
 # Kotlin daemon sessions
 .kotlin/
+
+# release signing (written by CI from secrets; never commit)
+android/key.properties
+*.jks
+*.keystore

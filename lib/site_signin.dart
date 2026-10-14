@@ -7,7 +7,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'api.dart';
 
-const _channel = MethodChannel('dmn/cookies');
+const _channel = MethodChannel('getaload/system');
 
 /// "a=1; b=2" (Android's CookieManager) as Netscape cookies.txt lines for [domain] and its subdomains.
 String cookiesTxt(String domain, Iterable<String> headers) {
@@ -54,7 +54,7 @@ class _SiteSignInScreenState extends State<SiteSignInScreen> {
 
   Future<void> _forget() async {
     try {
-      await _channel.invokeMethod('clear');
+      await _channel.invokeMethod('clearCookies');
       await _web?.clearCache();
       await _web?.clearLocalStorage();
     } catch (_) {}
@@ -67,7 +67,7 @@ class _SiteSignInScreenState extends State<SiteSignInScreen> {
     try {
       final headers = [
         for (final u in ['https://www.$d/', 'https://$d/', 'https://m.$d/'])
-          (await _channel.invokeMethod<String>('get', {'url': u})) ?? '',
+          (await _channel.invokeMethod<String>('cookies', {'url': u})) ?? '',
       ];
       final text = cookiesTxt(d, headers);
       if (text.isEmpty) throw Exception('No sign-in found. Sign in on the page first, then tap Done.');
