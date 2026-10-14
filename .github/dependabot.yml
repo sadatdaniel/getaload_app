@@ -1,0 +1,11 @@
+# Weekly upgrade PRs; nothing changes until CI passes and the PR is merged on purpose.
+version: 2
+updates:
+  - package-ecosystem: pub
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
