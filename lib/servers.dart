@@ -12,7 +12,6 @@ class Servers extends ChangeNotifier {
   static const _store = FlutterSecureStorage();
   List<Server> list = [];
   String active = ''; // url of the selected server
-  String lastClip = ''; // clipboard text already offered, so it is not offered again
 
   Server? get current => list.where((s) => s.url == active).firstOrNull ?? list.firstOrNull;
 
@@ -21,7 +20,7 @@ class Servers extends ChangeNotifier {
       final raw = await _store.read(key: 'servers');
       if (raw != null) list = (jsonDecode(raw) as List).map((e) => Server.fromJson(e)).toList();
       active = await _store.read(key: 'active') ?? '';
-      lastClip = await _store.read(key: 'lastClip') ?? '';
+      await _store.delete(key: 'lastClip'); // the old clipboard check kept the last copied link; not needed now
     } catch (_) {
       list = []; // unreadable after a backup restore to another device: start over (tokens are per device anyway)
     }
@@ -75,10 +74,5 @@ class Servers extends ChangeNotifier {
     }
     final p = defaultTargetPlatform.name;
     return '${kIsWeb ? 'Browser' : p[0].toUpperCase() + p.substring(1)} $id';
-  }
-
-  Future<void> seenClip(String text) async {
-    lastClip = text;
-    await _store.write(key: 'lastClip', value: text);
   }
 }

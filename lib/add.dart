@@ -1,11 +1,11 @@
 // Adding downloads: links (one or many, pasted together), and .torrent files picked or dropped (one or many).
 // Torrents get an options dialog (stream, unpack, Drive, seeding) with "Don't ask again".
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'settings.dart';
@@ -69,6 +69,20 @@ class AddPanelState extends State<AddPanel> {
   }
 
   void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
+  // Reads the clipboard only when asked (a background check shows "pasted from clipboard" notices on phones and
+  // asks for permission in some browsers). Keeps the links in it; other text is left out.
+  Future<void> _paste() async {
+    String text;
+    try {
+      text = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+    } catch (_) {
+      return _toast('The browser did not allow reading the clipboard. Paste into the field instead (Ctrl+V).');
+    }
+    final links = splitLinks(text).where(isDownloadLink).toList();
+    if (links.isEmpty) return _toast('The clipboard has no link.');
+    _link.text = links.join('\n');
+  }
 
   /// Sends one request per item and reports one summary, so a bulk add never ends in a wall of errors.
   Future<void> _send(List<Map<String, dynamic>> bodies, String what) async {
@@ -184,6 +198,12 @@ class AddPanelState extends State<AddPanel> {
                 keyboardType: TextInputType.url,
                 decoration: const InputDecoration(hintText: 'Paste a link or magnet', prefixIcon: Icon(Icons.link)),
                 onSubmitted: (_) => _addLinks(),
+              ),
+              before: OutlinedButton.icon(
+                onPressed: _busy ? null : _paste,
+                icon: const Icon(Icons.content_paste),
+                label: const Text('Paste link'),
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 52)),
               ),
               button: FilledButton.icon(
                 onPressed: _busy ? null : _addLinks,

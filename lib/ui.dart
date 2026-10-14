@@ -294,17 +294,27 @@ Future<bool> confirm(
 /// (phones with large text squeeze the field otherwise).
 class FieldWithButton extends StatelessWidget {
   final Widget field, button;
-  const FieldWithButton({super.key, required this.field, required this.button});
+  final Widget? before; // a second button between the field and the main one (e.g. Paste link)
+  const FieldWithButton({super.key, required this.field, required this.button, this.before});
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) => box.maxWidth < 480
-        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [field, const SizedBox(height: 8), button])
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              field,
+              const SizedBox(height: 8),
+              if (before != null) ...[before!, const SizedBox(height: 8)],
+              button,
+            ],
+          )
         : Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(child: field),
               const SizedBox(width: 8),
+              if (before != null) ...[before!, const SizedBox(width: 8)],
               button,
             ],
           ),

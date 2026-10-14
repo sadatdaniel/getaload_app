@@ -268,7 +268,7 @@ class Api {
   static bool get canDownload => Transport.canDownload;
 }
 
-/// Links worth offering to download from the clipboard.
+/// Links the Paste button takes from the clipboard.
 bool isDownloadLink(String s) {
   s = s.trim();
   if (s.contains(RegExp(r'\s'))) return false;

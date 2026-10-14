@@ -181,9 +181,8 @@ class Home extends StatefulWidget {
   State<Home> createState() => _HomeState();
 }
 
-class _HomeState extends State<Home> with WidgetsBindingObserver {
+class _HomeState extends State<Home> {
   Servers get servers => widget.servers;
-  bool _offering = false;
   String _addonsChecked = ''; // server whose add-on switch was last fetched
 
   // Fetches whether add-ons are on for this server (once per server; Settings updates it when toggled).
@@ -207,75 +206,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     addonsEnabled.addListener(_onAddons);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkClipboard());
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     addonsEnabled.removeListener(_onAddons);
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _checkClipboard();
-  }
-
-  // Android 10+ lets only the focused app read the clipboard, so wait until the window has focus.
-  Future<void> _checkClipboard() async {
-    if (_offering) return;
-    _offering = true;
-    try {
-      await Future.delayed(const Duration(milliseconds: 400));
-      String text;
-      try {
-        text = ((await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '').trim();
-      } catch (_) {
-        return; // the browser denied clipboard access, or nothing readable is there
-      }
-      if (text.isEmpty || text == servers.lastClip || !mounted) return;
-      if (!isDownloadLink(text)) return;
-      await servers.seenClip(text);
-      await _offerDownload(text);
-    } finally {
-      _offering = false;
-    }
-  }
-
-  Future<void> _offerDownload(String link) async {
-    var target = servers.current!;
-    final go = await confirm(
-      context,
-      title: 'Download this link?',
-      body: StatefulBuilder(
-        builder: (c, set) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(link, maxLines: 3, overflow: TextOverflow.ellipsis),
-            if (servers.list.length > 1) ...[
-              const SizedBox(height: 12),
-              DropdownMenu<String>(
-                initialSelection: target.url,
-                label: const Text('Server'),
-                expandedInsets: EdgeInsets.zero,
-                dropdownMenuEntries: [for (final s in servers.list) DropdownMenuEntry(value: s.url, label: s.name)],
-                onSelected: (u) => set(() => target = servers.list.firstWhere((s) => s.url == u)),
-              ),
-            ],
-          ],
-        ),
-      ),
-      action: 'Download',
-    );
-    if (go) await addDownload(target, link, _toast);
-  }
-
-  void _toast(String m) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
   // Server switcher: a dropdown menu under the server button.
@@ -422,18 +359,6 @@ class _DownloadsViewState extends State<DownloadsView> {
         ),
       ],
     );
-  }
-}
-
-Future<void> addDownload(Server s, String link, void Function(String) toast) async {
-  final api = Api(s);
-  try {
-    final j = await api.add(link);
-    toast('Added to ${s.name}: ${j['name'] ?? link}');
-  } catch (e) {
-    toast(e.toString());
-  } finally {
-    api.close();
   }
 }
 

@@ -167,11 +167,7 @@ class _JobsViewState extends State<JobsView> {
       items = [
         const Padding(
           padding: EdgeInsets.all(32),
-          child: Center(
-            child: Text(
-              'Nothing downloading. Add a link above, drop .torrent files here, or copy a link and reopen the app.',
-            ),
-          ),
+          child: Center(child: Text('Nothing downloading. Add a link above or drop .torrent files here.')),
         ),
       ];
     } else {
