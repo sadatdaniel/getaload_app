@@ -5,21 +5,6 @@ import 'package:getaload/proxy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('pair link from getaload pair / the web panel', () {
-    final s = Server.fromPairLink('getaload://pair?fp=AB00&token=getaload_x&url=https%3A%2F%2F203.0.113.5%3A8080&v=1')!;
-    expect(s.url, 'https://203.0.113.5:8080');
-    expect(s.token, 'getaload_x');
-    expect(
-      Server.fromPairLink('dmn://pair?token=t&url=https%3A%2F%2Fx.test'),
-      isNotNull,
-    ); // links from before the rename
-    expect(s.fp, 'ab00');
-    expect(s.name, '203.0.113.5');
-    expect(Server.fromPairLink('https://example.com'), isNull);
-    expect(Server.fromPairLink('dmn://pair?url=ftp%3A%2F%2Fx&token=t'), isNull);
-    expect(Server.fromPairLink('dmn://pair?url=https%3A%2F%2Fx.test'), isNull); // no token
-  });
-
   test('typed server address', () {
     expect(Server.normalizeUrl('example.test:8080/'), 'https://example.test:8080');
     expect(Server.normalizeUrl('http://10.0.0.2:8080/x'), 'http://10.0.0.2:8080');
@@ -37,10 +22,16 @@ void main() {
   });
 
   // Optional end-to-end check against a real server (the dev container), e.g.
-  // GETALOAD_TEST_PAIR='getaload://pair?...' flutter test
-  final pair = Platform.environment['GETALOAD_TEST_PAIR'];
+  // GETALOAD_TEST_URL=https://127.0.0.1:8080 GETALOAD_TEST_TOKEN=... [GETALOAD_TEST_FP=...] flutter test
+  final env = Platform.environment;
+  final url = env['GETALOAD_TEST_URL'];
   test('live server: pinned TLS, jobs, progress', () async {
-    final s = Server.fromPairLink(pair!)!;
+    final s = Server(
+      url: url!,
+      token: env['GETALOAD_TEST_TOKEN'] ?? '',
+      fp: env['GETALOAD_TEST_FP'] ?? '',
+      name: 'test',
+    );
     final api = Api(s);
     expect(await api.call('GET', '/v1/health'), containsPair('status', 'ok'));
     expect(await api.jobs(), isA<List>());
@@ -60,5 +51,5 @@ void main() {
     final bad = Api(Server(url: s.url, token: s.token, fp: '00' * 32, name: 'x'));
     await expectLater(bad.call('GET', '/v1/health'), throwsA(isA<ApiError>()));
     bad.close();
-  }, skip: pair == null ? 'set GETALOAD_TEST_PAIR to run' : null);
+  }, skip: url == null ? 'set GETALOAD_TEST_URL and GETALOAD_TEST_TOKEN to run' : null);
 }

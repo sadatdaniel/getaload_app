@@ -6,13 +6,13 @@ import 'package:flutter/foundation.dart';
 
 import 'transport.dart' if (dart.library.js_interop) 'transport_web.dart';
 
-/// One paired server. Several can be saved; the token is per device and per server.
+/// One saved server. Several can be saved; the token is per device and per server.
 class Server {
   final String url; // e.g. https://203.0.113.5:8080, also the unique key
   final String token;
   final String fp; // hex SHA-256 of the certificate; empty = normal TLS verification (or plain HTTP)
   final String name;
-  final String user; // who this device signed in as (empty: a server without users, or a pairing token)
+  final String user; // who this device signed in as (empty: a server without users, signed in with a token)
   final bool owner; // the owner manages users
 
   const Server({
@@ -43,18 +43,6 @@ class Server {
     user: j['user'] ?? '',
     owner: j['owner'] ?? false,
   );
-
-  /// Parses the getaload://pair?v=1&url=..&token=..&fp=.. link from `getaload pair` or the web panel (dmn:// before the rename).
-  static Server? fromPairLink(String link) {
-    final u = Uri.tryParse(link.trim());
-    final scheme = u?.scheme; // dmn:// links come from servers before the rename
-    if (u == null || (scheme != 'getaload' && scheme != 'dmn') || u.host != 'pair') return null;
-    final q = u.queryParameters;
-    final url = normalizeUrl(q['url'] ?? '');
-    final token = q['token'] ?? '';
-    if (url == null || token.isEmpty) return null;
-    return Server(url: url, token: token, fp: (q['fp'] ?? '').toLowerCase(), name: Uri.parse(url).host);
-  }
 
   static String? normalizeUrl(String s) {
     s = s.replaceAll(RegExp(r'\s'), ''); // phone keyboards add spaces after "https://"

@@ -237,36 +237,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         return; // the browser denied clipboard access, or nothing readable is there
       }
       if (text.isEmpty || text == servers.lastClip || !mounted) return;
-      final pair = Server.fromPairLink(text);
-      if (pair == null && !isDownloadLink(text)) return;
+      if (!isDownloadLink(text)) return;
       await servers.seenClip(text);
-      if (pair != null) {
-        await _offerPair(pair);
-      } else {
-        await _offerDownload(text);
-      }
+      await _offerDownload(text);
     } finally {
       _offering = false;
-    }
-  }
-
-  Future<void> _offerPair(Server s) async {
-    final ok = await confirm(
-      context,
-      title: 'Add server ${s.name}?',
-      body: Text('The clipboard has a pairing link for ${s.url}.'),
-      action: 'Add server',
-    );
-    if (!ok) return;
-    final api = Api(s);
-    try {
-      await api.call('GET', '/v1/jobs');
-      await servers.add(s);
-      _toast('Added ${s.name}');
-    } catch (e) {
-      _toast(e.toString());
-    } finally {
-      api.close();
     }
   }
 

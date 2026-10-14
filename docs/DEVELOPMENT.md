@@ -12,12 +12,12 @@ web), `jobs.dart` + `add.dart` (downloads), `files.dart` + `icons.dart` + `viewe
 ```
 flutter analyze
 flutter test
-GETALOAD_TEST_PAIR='getaload://pair?...' flutter test   # also runs the live check against a test server
+GETALOAD_TEST_URL=https://127.0.0.1:8080 GETALOAD_TEST_TOKEN=... flutter test   # also runs the live check against a test server
 flutter build web --release --wasm            # preview: .claude/launch.json "app-web" in the server repo
 flutter build apk --release
 ```
 
-Rules from the server repo apply: never commit tokens, pairing links, keystores or personal data; test only
+Rules from the server repo apply: never commit tokens, keystores or personal data; test only
 against our own local servers and content (rule 7).
 
 ## Releases

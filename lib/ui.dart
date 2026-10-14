@@ -311,6 +311,6 @@ class FieldWithButton extends StatelessWidget {
   );
 }
 
-/// Android or iOS: phone-only features (QR scanning, screen rotation) are hidden on the web and on desktops.
+/// Android or iOS: phone-only features (screen rotation, downloads to the phone) are hidden on the web and on desktops.
 final isPhone =
     !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
