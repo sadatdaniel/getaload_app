@@ -1,7 +1,7 @@
 # getaload app
 
 Flutter app (Android first; the web build is used for testing and may become the server's web panel) for the
-self-hosted [getaload](https://github.com/sadatdaniel/getaload) server. Private for now.
+self-hosted [getaload](https://github.com/sadatdaniel/getaload) server.
 
 ## What it does
 
