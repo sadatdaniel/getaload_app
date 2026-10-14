@@ -211,7 +211,8 @@ class _FilesViewState extends State<FilesView> {
     if (!Api.canDownload) {
       // Web: the browser downloads through a signed link.
       final u = await _api.signedUrl(e);
-      await launchUrl(u, webOnlyWindowName: '_blank');
+      // dl=1: saved, not shown (the server shows files in a sandbox, where e.g. Chrome's PDF viewer won't open).
+      await launchUrl(u.replace(queryParameters: {...u.queryParameters, 'dl': '1'}), webOnlyWindowName: '_blank');
       return;
     }
     PhoneDownloads.instance.start(_api.server, e);
