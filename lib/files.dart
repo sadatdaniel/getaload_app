@@ -123,11 +123,16 @@ class _FilesViewState extends State<FilesView> {
 
   // Pointer event times, not wall-clock: a slow folder load delays handling the second click of a double-click.
   Duration _down = Duration.zero, _opened = -kDoubleTapTimeout;
+  int _downs = 0, _seen = 0; // pointer presses so far, and at the last tap
 
-  // A double-click opens once: its second click must not open what sits in the same spot of the opened folder.
+  // A double-click opens once: its second click must not open what sits in the same spot of the opened folder. Only
+  // a tap with a new pointer press counts: taps can also arrive without one (the web's accessibility layer, on for
+  // screen readers), and comparing against an old press dropped every such tap.
   void _tap(FileEntry e) {
-    if (_down - _opened < kDoubleTapTimeout) return;
-    _opened = _down;
+    final pressed = _downs != _seen;
+    _seen = _downs;
+    if (pressed && _down - _opened < kDoubleTapTimeout) return;
+    if (pressed) _opened = _down;
     _open(e);
   }
 
@@ -363,7 +368,10 @@ class _FilesViewState extends State<FilesView> {
   }
 
   Widget _gridTile(FileEntry e) => Listener(
-    onPointerDown: (p) => _down = p.timeStamp,
+    onPointerDown: (p) {
+      _down = p.timeStamp;
+      _downs++;
+    },
     child: ContextMenuArea(
       onMenu: (at) => _menu(e, at),
       child: InkWell(
@@ -391,7 +399,10 @@ class _FilesViewState extends State<FilesView> {
   );
 
   Widget _listTile(FileEntry e) => Listener(
-    onPointerDown: (p) => _down = p.timeStamp,
+    onPointerDown: (p) {
+      _down = p.timeStamp;
+      _downs++;
+    },
     child: ContextMenuArea(
       onMenu: (at) => _menu(e, at),
       child: InkWell(

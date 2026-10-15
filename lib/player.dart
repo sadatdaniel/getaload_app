@@ -61,6 +61,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _statTimer;
   String _error = '';
   Timer? _saver;
+  // The resume point while playback has not reached it yet. Saving meanwhile would store about 0, which means "start
+  // over" and wipes the position saved on the server for the person's other devices.
+  Duration? _pending;
+  DateTime _openedAt = DateTime.now();
 
   /// mpv itself; null on web, where only basic playback is available.
   // Typed dynamic: the web build of media_kit has no setProperty/command, so they must not be referenced statically.
@@ -137,6 +141,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _open() async {
+    _pending = const Duration(days: 1); // no saving until this file's resume point is known (below)
+    _openedAt = DateTime.now();
     final mpv = _mpv;
     if (mpv != null) {
       await mpv.setProperty('cache', 'yes');
@@ -149,6 +155,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     // Where the person stopped on any of their devices (the server keeps the newest), else on this one.
     final start = await WatchSync.position(_item) ?? _s.position(_item.id);
+    _pending = start;
+    _openedAt = DateTime.now();
     final url = await LocalProxy.instance.wrap(_item.url, _item.via);
     await _player.open(Media(url, httpHeaders: _item.headers, start: start));
     for (final sub in _item.subtitles) {
@@ -164,7 +172,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Resumed at ${_fmt(start)}'),
-          action: SnackBarAction(label: 'Start over', onPressed: () => _player.seek(Duration.zero)),
+          action: SnackBarAction(
+            label: 'Start over',
+            onPressed: () {
+              _pending = null; // starting over is a real choice: save it
+              _player.seek(Duration.zero);
+            },
+          ),
           // A message with an action stays until dismissed by default; this one is only a hint.
           persist: false,
           duration: const Duration(seconds: 6),
@@ -176,6 +190,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _save({bool force = false}) {
     final pos = _player.state.position, dur = _player.state.duration;
     if (dur == Duration.zero) return; // nothing loaded yet
+    final p = _pending;
+    if (p != null) {
+      // Not at the resume point yet (it can take a moment); give up waiting after 15 s in case the start was ignored.
+      final waiting = DateTime.now().difference(_openedAt) < const Duration(seconds: 15);
+      if (pos + const Duration(seconds: 2) < p && waiting) return;
+      _pending = null;
+    }
     _s.savePosition(_item.id, pos, dur);
     _s.touchRecent(_item.toJson(), pos, dur);
     WatchSync.push(_item, pos, dur, force: force);
