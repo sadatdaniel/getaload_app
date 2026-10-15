@@ -51,5 +51,5 @@ jobs:
             --title "getaload app $GITHUB_REF_NAME" \
             --notes "Android app for getaload. Most phones: the arm64-v8a APK. Signed with the getaload release key (SHA-256 D5:BD:AE:54:…:28:72:1A:D0)."
       - if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: apks, path: build/app/outputs/flutter-apk/getaload-*.apk }
