@@ -231,6 +231,8 @@ class _ServerScreenState extends State<ServerScreen> {
       final c = await _api.call('GET', '/v1/update${now ? '?refresh=true' : ''}') as Map<String, dynamic>;
       if (mounted) setState(() => _update = c);
       if (now && c['available'] != true) _toast('The server is up to date (${c['current']})');
+      // Asked by a tap and one is there: straight to "Update to ...?", not a second button to find.
+      if (now && c['available'] == true && widget.server.admin && mounted) await _applyUpdate();
     } catch (e) {
       if (now) _toast(e.toString());
     }
