@@ -102,12 +102,37 @@ class _JobsViewState extends State<JobsView> {
     }
   }
 
+  // The file a job plays, as a path in the person's folder: the job's own file, or a torrent's largest file (what the
+  // job stream plays). Null before the server knows it.
+  Future<String?> _jobFile(Map<String, dynamic> j) async {
+    final p = j['path'] as String?;
+    if (p == null || p.isEmpty) return null;
+    if (j['kind'] != 'torrent') return '/$p';
+    try {
+      final fs = ((await _api.call('GET', '/v1/jobs/${j['id']}/files')) as List).cast<Map<String, dynamic>>();
+      if (fs.isEmpty) return null;
+      fs.sort((a, b) => ((b['length'] ?? 0) as num).compareTo((a['length'] ?? 0) as num));
+      return '/${fs.first['path']}';
+    } catch (_) {
+      return null;
+    }
+  }
+
   // Plays through the job stream, which waits for missing bytes (and fetches torrent pieces under the playhead).
   Future<void> _playJob(Map<String, dynamic> j) async {
     try {
       final url = (await _api.signedJobUrl(j['id'])).toString();
       final name = (j['name'] as String?)?.isNotEmpty == true ? j['name'] as String : 'Download';
-      final item = Playable(id: 'job:${_api.server.url}:${j['id']}', title: name, url: url, via: _api.server);
+      // The same identity as the file in Files and Media, so all three share one position, one Continue watching
+      // entry, and the sync to the person's other devices.
+      final file = await _jobFile(j);
+      final item = Playable(
+        id: file == null ? 'job:${_api.server.url}:${j['id']}' : 'server:${_api.server.url}::$file',
+        title: name,
+        url: url,
+        via: _api.server,
+        source: file == null ? const {} : {'server': _api.server.url, 'path': file, 'archive': ''},
+      );
       if (mounted) await play(context, item);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));

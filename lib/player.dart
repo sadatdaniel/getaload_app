@@ -40,6 +40,7 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
+  final _keys = FocusNode(debugLabel: 'player keys');
   final _s = AppSettings.instance;
   late final _player = Player(
     configuration: PlayerConfiguration(bufferSize: _s.bufferMiB << 20, title: widget.item.title),
@@ -125,6 +126,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
+    _keys.dispose();
     _saver?.cancel();
     _statTimer?.cancel();
     _save(force: true);
@@ -145,7 +147,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         await mpv.setProperty('slang', _s.preferredLanguages);
       }
     }
-    final start = _s.position(_item.id);
+    // Where the person stopped on any of their devices (the server keeps the newest), else on this one.
+    final start = await WatchSync.position(_item) ?? _s.position(_item.id);
     final url = await LocalProxy.instance.wrap(_item.url, _item.via);
     await _player.open(Media(url, httpHeaders: _item.headers, start: start));
     for (final sub in _item.subtitles) {
@@ -162,6 +165,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         SnackBar(
           content: Text('Resumed at ${_fmt(start)}'),
           action: SnackBarAction(label: 'Start over', onPressed: () => _player.seek(Duration.zero)),
+          // A message with an action stays until dismissed by default; this one is only a hint.
+          persist: false,
+          duration: const Duration(seconds: 6),
         ),
       );
     }
@@ -744,8 +750,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final back = {5: Icons.replay_5, 10: Icons.replay_10, 30: Icons.replay_30}[step] ?? Icons.replay;
     final fwd = {5: Icons.forward_5, 10: Icons.forward_10, 30: Icons.forward_30}[step] ?? Icons.forward;
     final theme = MaterialVideoControlsThemeData(
-      // Off the screen edge: phones round their corners, and the bar should not run into them.
-      seekBarMargin: const EdgeInsets.fromLTRB(24, 0, 24, 36),
+      // Off the screen edge (phones round their corners), and above the bottom buttons: media_kit draws the bar in
+      // the same 56-high strip as that row, so anything under 56 + a gap puts the bar across the buttons.
+      seekBarMargin: const EdgeInsets.fromLTRB(24, 0, 24, 64),
       seekOnDoubleTap: true,
       seekOnDoubleTapBackwardDuration: Duration(seconds: step),
       seekOnDoubleTapForwardDuration: Duration(seconds: step),
@@ -818,68 +825,74 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: CallbackShortcuts(
           bindings: _shortcuts(step),
           child: Focus(
+            focusNode: _keys,
             autofocus: true,
-            child: Transform.translate(
-              offset: Offset(0, _drag),
-              child: Opacity(
-                opacity: (1 - _drag / 500).clamp(0.4, 1.0),
-                child: Stack(
-                  children: [
-                    MaterialVideoControlsTheme(
-                      normal: theme,
-                      fullscreen: theme,
-                      child: Video(
-                        controller: _video,
-                        fit: _fit,
-                        controls: MaterialVideoControls,
-                        // Hidden: _subtitles draws both lines with their own position and style.
-                        subtitleViewConfiguration: const SubtitleViewConfiguration(visible: false),
+            // A click or tap on the video or its controls takes the keyboard focus; take it back, or Escape and the
+            // other shortcuts stop working after the first click.
+            child: Listener(
+              onPointerUp: (_) => _keys.requestFocus(),
+              child: Transform.translate(
+                offset: Offset(0, _drag),
+                child: Opacity(
+                  opacity: (1 - _drag / 500).clamp(0.4, 1.0),
+                  child: Stack(
+                    children: [
+                      MaterialVideoControlsTheme(
+                        normal: theme,
+                        fullscreen: theme,
+                        child: Video(
+                          controller: _video,
+                          fit: _fit,
+                          controls: MaterialVideoControls,
+                          // Hidden: _subtitles draws both lines with their own position and style.
+                          subtitleViewConfiguration: const SubtitleViewConfiguration(visible: false),
+                        ),
                       ),
-                    ),
-                    Positioned.fill(
-                      child: Row(
-                        children: [
-                          const Spacer(),
-                          Expanded(
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.translucent, // taps still reach the controls
-                              onVerticalDragUpdate: (d) =>
-                                  setState(() => _drag = (_drag + d.delta.dy).clamp(0.0, 600.0)),
-                              onVerticalDragEnd: _dragEnd,
-                              onVerticalDragCancel: () => setState(() => _drag = 0),
+                      Positioned.fill(
+                        child: Row(
+                          children: [
+                            const Spacer(),
+                            Expanded(
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.translucent, // taps still reach the controls
+                                onVerticalDragUpdate: (d) =>
+                                    setState(() => _drag = (_drag + d.delta.dy).clamp(0.0, 600.0)),
+                                onVerticalDragEnd: _dragEnd,
+                                onVerticalDragCancel: () => setState(() => _drag = 0),
+                              ),
                             ),
-                          ),
-                          const Spacer(),
-                        ],
+                            const Spacer(),
+                          ],
+                        ),
                       ),
-                    ),
-                    // Our two subtitle lines (media_kit's own view is hidden), and the stats overlay. Neither takes taps.
-                    IgnorePointer(
-                      child: StreamBuilder<List<String>>(
-                        stream: _player.stream.subtitle,
-                        initialData: _player.state.subtitle,
-                        builder: (c, snap) => _subtitles(snap.data ?? const []),
+                      // Our two subtitle lines (media_kit's own view is hidden), and the stats overlay. Neither takes taps.
+                      IgnorePointer(
+                        child: StreamBuilder<List<String>>(
+                          stream: _player.stream.subtitle,
+                          initialData: _player.state.subtitle,
+                          builder: (c, snap) => _subtitles(snap.data ?? const []),
+                        ),
                       ),
-                    ),
-                    if (_stats) Positioned(top: 64, left: 12, child: IgnorePointer(child: _statsBox())),
-                    if (_error.isNotEmpty)
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 96,
-                        child: Material(
-                          color: Colors.black87,
-                          borderRadius: BorderRadius.circular(16),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Text(
-                              "Can't play this: $_error. Try \"Open with\" or the software decoder.",
-                              style: const TextStyle(color: Colors.white),
+                      if (_stats) Positioned(top: 64, left: 12, child: IgnorePointer(child: _statsBox())),
+                      if (_error.isNotEmpty)
+                        Positioned(
+                          left: 16,
+                          right: 16,
+                          bottom: 96,
+                          child: Material(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(16),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text(
+                                "Can't play this: $_error. Try \"Open with\" or the software decoder.",
+                                style: const TextStyle(color: Colors.white),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

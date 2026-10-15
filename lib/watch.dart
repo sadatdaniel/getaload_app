@@ -44,6 +44,23 @@ class WatchSync {
     }
   }
 
+  /// Where the person stopped this file on any of their devices (the server keeps the newest: every device saves
+  /// there, always when closing the player). Null when unknown, finished, or the server can't be reached quickly.
+  static Future<Duration?> position(Playable item) async {
+    final srv = item.via, src = item.source;
+    if (srv == null || srv.user.isEmpty || src['server'] != srv.url || src['path'] == null) return null;
+    final api = Api(srv);
+    try {
+      final p = (await api.call('GET', '/v1/prefs').timeout(const Duration(seconds: 3))) as Map<String, dynamic>?;
+      final w = p?[_key(src)];
+      return w is Map && w['pos'] is num ? Duration(milliseconds: (w['pos'] as num).toInt()) : null;
+    } catch (_) {
+      return null;
+    } finally {
+      api.close();
+    }
+  }
+
   /// Merges the user's positions from the server into this device's Continue watching.
   static Future<void> pull(Api api) async {
     if (api.server.user.isEmpty) return;

@@ -40,4 +40,25 @@ void main() {
     expect(s.recent, isEmpty);
     expect(s.position('server:$srv::/a.mkv'), isNull);
   });
+
+  test('one Continue watching entry per file, whichever way it was played', () async {
+    SharedPreferences.setMockInitialValues({});
+    final s = AppSettings.instance;
+    await s.load();
+    const srv = 'https://x.test';
+    const src = {'server': srv, 'path': '/m.mkv', 'archive': ''};
+    // The same file played under another id (e.g. from Downloads) is still one entry.
+    await s.touchRecent(
+      {'id': 'job:$srv:42', 'title': 'm', 'url': '', 'source': src},
+      const Duration(minutes: 2),
+      const Duration(hours: 1),
+    );
+    await s.touchRecent(
+      {'id': 'server:$srv::/m.mkv', 'title': 'm', 'url': '', 'source': src},
+      const Duration(minutes: 5),
+      const Duration(hours: 1),
+    );
+    expect(s.recent.length, 1);
+    expect(s.recent.first['pos'], 300000);
+  });
 }

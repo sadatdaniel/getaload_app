@@ -100,7 +100,16 @@ class AppSettings extends ChangeNotifier {
 
   /// Moves [item] to the front with its position; finished items drop out of the list.
   Future<void> touchRecent(Map<String, dynamic> item, Duration pos, Duration dur) async {
-    final l = recent.where((r) => r['item']['id'] != item['id']).toList();
+    // One entry per file: also drop one with another id for the same server file.
+    String where(Map m) {
+      final s = (m['source'] as Map?) ?? const {};
+      return s['path'] == null ? '' : '${s['server']}:${s['archive'] ?? ''}:${s['path']}';
+    }
+
+    final here = where(item);
+    final l = recent
+        .where((r) => r['item']['id'] != item['id'] && (here.isEmpty || where(r['item'] as Map) != here))
+        .toList();
     final finished = dur > Duration.zero && pos > dur * 0.95;
     final at = DateTime.now().millisecondsSinceEpoch;
     if (!finished) l.insert(0, {'item': item, 'pos': pos.inMilliseconds, 'dur': dur.inMilliseconds, 'at': at});

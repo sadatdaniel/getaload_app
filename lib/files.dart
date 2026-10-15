@@ -164,7 +164,13 @@ class _FilesViewState extends State<FilesView> {
       if (i < 0) return null;
       url += '&file=$i';
     }
-    return Playable(id: 'server:${_api.server.url}::${e.path}', title: e.name, url: url, via: _api.server);
+    return Playable(
+      id: 'server:${_api.server.url}::${e.path}',
+      title: e.name,
+      url: url,
+      via: _api.server,
+      source: {'server': _api.server.url, 'path': e.path, 'archive': ''}, // synced like any server file
+    );
   }
 
   Future<void> _play(FileEntry e) async {
