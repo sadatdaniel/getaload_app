@@ -17,7 +17,8 @@ import 'ui.dart';
 class ServerScreen extends StatefulWidget {
   final Servers servers;
   final Server server;
-  const ServerScreen({super.key, required this.servers, required this.server});
+  final String only; // one Settings page: server, network, addons, downloads or drive
+  const ServerScreen({super.key, required this.servers, required this.server, required this.only});
   @override
   State<ServerScreen> createState() => _ServerScreenState();
 }
@@ -217,8 +218,10 @@ class _ServerScreenState extends State<ServerScreen> {
       action: 'Remove',
       danger: true,
     );
-    if (!ok) return;
+    if (!ok || !mounted) return;
+    final nav = Navigator.of(context);
     await widget.servers.remove(widget.server); // the home screen switches to the next server
+    nav.popUntil((r) => r.isFirst); // this Settings page belonged to the removed server
   }
 
   // ---- server software update ----
@@ -486,76 +489,88 @@ class _ServerScreenState extends State<ServerScreen> {
     final p = _ports;
     final cs = Theme.of(context).colorScheme;
     final mono = TextStyle(fontFamily: 'monospace', fontSize: 12.5, color: cs.onSurfaceVariant);
+    final on = widget.only;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SettingsGroup(
-          title: 'Server',
-          children: [
-            SettingsRow(title: 'Name', subtitle: s.name, onTap: _rename),
-            SettingsRow(
-              title: 'Address',
-              trailing: SelectableText(s.url, style: mono),
-            ),
-            if (_version.isNotEmpty)
+        if (on == 'server')
+          SettingsGroup(
+            title: 'Server',
+            children: [
+              SettingsRow(title: 'Name', subtitle: s.name, onTap: _rename),
               SettingsRow(
-                title: 'Software',
-                subtitle: _updating
-                    ? 'Updating to ${_update?['latest']}… the server restarts'
-                    : _update == null
-                    ? 'Version $_version' // this server does not update itself (e.g. Docker: pull the new image)
-                    : _update?['available'] == true
-                    ? 'Version $_version. Version ${_update!['latest']} is available.'
-                    : 'Version $_version. Up to date.',
-                trailing: _updating
-                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                    : _update?['available'] == true && admin
-                    ? TextButton(onPressed: _applyUpdate, child: const Text('Update'))
-                    : IconButton(
-                        icon: const Icon(Icons.refresh),
-                        tooltip: 'Check for updates now',
-                        onPressed: () => _checkUpdate(now: true),
-                      ),
+                title: 'Address',
+                trailing: SelectableText(s.url, style: mono),
               ),
-            if (s.fp.isNotEmpty)
-              SettingsRow(
-                title: 'Certificate',
-                subtitle: 'Pinned SHA-256 fingerprint',
-                below: SelectableText(s.fp, style: mono),
-              ),
-          ],
-        ),
-        SettingsGroup(
-          title: 'Network',
-          description: 'Torrents are faster when other peers can connect to this server.',
-          children: [
-            if (p == null)
-              SettingsRow(
-                title: 'Torrent port',
-                subtitle: _portsLoaded ? 'Update the server to check ports.' : 'Checking…',
-              )
-            else ...[
-              SettingsRow(
-                title: 'Torrent port ${p['torrentPort']}',
-                subtitle: p['hint'],
-                trailing: _verdict(p['verdict']),
-              ),
-              if (p['torrentRunning'] == true)
-                SettingsRow(title: 'Peers', trailing: Text('${p['peers']} connected, ${p['incoming']} came to us')),
-              if (Api.canDownload)
+              if (_version.isNotEmpty)
                 SettingsRow(
-                  title: 'Test from this device',
-                  subtitle: _probe.isEmpty ? 'Connects to the port from this phone, e.g. over mobile data.' : _probe,
-                  trailing: OutlinedButton(onPressed: _testPort, child: const Text('Test')),
+                  title: 'Software',
+                  subtitle: _updating
+                      ? 'Updating to ${_update?['latest']}… the server restarts'
+                      : _update == null
+                      ? 'Version $_version' // this server does not update itself (e.g. Docker: pull the new image)
+                      : _update?['available'] == true
+                      ? 'Version $_version. Version ${_update!['latest']} is available.'
+                      : 'Version $_version. Up to date.',
+                  trailing: _updating
+                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                      : _update?['available'] == true && admin
+                      ? TextButton(onPressed: _applyUpdate, child: const Text('Update'))
+                      : IconButton(
+                          icon: const Icon(Icons.refresh),
+                          tooltip: 'Check for updates now',
+                          onPressed: () => _checkUpdate(now: true),
+                        ),
                 ),
+              if (s.fp.isNotEmpty)
+                SettingsRow(
+                  title: 'Certificate',
+                  subtitle: 'Pinned SHA-256 fingerprint',
+                  below: SelectableText(s.fp, style: mono),
+                ),
+            ],
+          ),
+        if (on == 'network')
+          SettingsGroup(
+            title: 'Network',
+            description: 'Torrents are faster when other peers can connect to this server.',
+            children: [
+              if (p == null)
+                SettingsRow(
+                  title: 'Torrent port',
+                  subtitle: _portsLoaded ? 'Update the server to check ports.' : 'Checking…',
+                )
+              else ...[
+                SettingsRow(
+                  title: 'Torrent port ${p['torrentPort']}',
+                  subtitle: p['hint'],
+                  trailing: _verdict(p['verdict']),
+                ),
+                if (p['torrentRunning'] == true)
+                  SettingsRow(title: 'Peers', trailing: Text('${p['peers']} connected, ${p['incoming']} came to us')),
+                if (Api.canDownload)
+                  SettingsRow(
+                    title: 'Test from this device',
+                    subtitle: _probe.isEmpty ? 'Connects to the port from this phone, e.g. over mobile data.' : _probe,
+                    trailing: OutlinedButton(onPressed: _testPort, child: const Text('Test')),
+                  ),
+                SettingsRow(
+                  title: 'Check again',
+                  trailing: IconButton(onPressed: _loadPorts, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
+                ),
+              ],
+            ],
+          ),
+        if (on == 'addons' && !admin)
+          const SettingsGroup(
+            children: [
               SettingsRow(
-                title: 'Check again',
-                trailing: IconButton(onPressed: _loadPorts, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
+                title: 'Add-ons (experimental)',
+                subtitle: 'Switched on and off by a device with server control (Settings, Server control).',
               ),
             ],
-          ],
-        ),
-        if (admin)
+          ),
+        if (on == 'addons' && admin)
           SettingsGroup(
             title: 'Add-ons (experimental)',
             description: _addons?['enabled'] == true
@@ -628,56 +643,59 @@ class _ServerScreenState extends State<ServerScreen> {
                 ),
             ],
           ),
-        CookieSettings(key: ValueKey('ck${s.url}'), server: s),
-        SettingsGroup(
-          title: 'Storage',
-          children: [
-            SettingsRow(
-              title: 'Leftover partial files',
-              subtitle: _leftovers == null
-                  ? 'Checking…'
-                  : _leftovers!['files'].isEmpty
-                  ? 'None. Unfinished downloads that were removed leave nothing behind.'
-                  : '${_leftovers!['files'].length} files, ${fmtBytes(_leftovers!['bytes'] ?? 0)}, '
-                        'from downloads that no longer exist. They cannot be resumed.',
-              trailing: (_leftovers?['files'] as List?)?.isNotEmpty == true
-                  ? OutlinedButton(onPressed: _cleanup, child: const Text('Clean up'))
-                  : null,
-            ),
-          ],
-        ),
-        SettingsGroup(
-          title: 'Cloud storage',
-          children: [
-            SettingsRow(
-              title: 'Google Drive',
-              subtitle: _driveError.isNotEmpty ? _driveError : _driveText(admin),
-              trailing: _driveButton(admin),
-              below: _signin == null
-                  ? null
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Enter this code on the Google page (it is copied):'),
-                        const SizedBox(height: 6),
-                        SelectableText(_signin!['userCode'] ?? '', style: Theme.of(context).textTheme.headlineSmall),
-                        const SizedBox(height: 4),
-                        Text('Waiting for approval…', style: TextStyle(color: cs.onSurfaceVariant)),
-                      ],
-                    ),
-            ),
-          ],
-        ),
-        SettingsGroup(
-          children: [
-            SettingsRow(
-              title: 'Remove this server from the app',
-              subtitle: 'Downloads on the server stay. Sign in again to add it back.',
-              danger: true,
-              onTap: _remove,
-            ),
-          ],
-        ),
+        if (on == 'downloads') CookieSettings(key: ValueKey('ck${s.url}'), server: s),
+        if (on == 'downloads')
+          SettingsGroup(
+            title: 'Storage',
+            children: [
+              SettingsRow(
+                title: 'Leftover partial files',
+                subtitle: _leftovers == null
+                    ? 'Checking…'
+                    : _leftovers!['files'].isEmpty
+                    ? 'None. Unfinished downloads that were removed leave nothing behind.'
+                    : '${_leftovers!['files'].length} files, ${fmtBytes(_leftovers!['bytes'] ?? 0)}, '
+                          'from downloads that no longer exist. They cannot be resumed.',
+                trailing: (_leftovers?['files'] as List?)?.isNotEmpty == true
+                    ? OutlinedButton(onPressed: _cleanup, child: const Text('Clean up'))
+                    : null,
+              ),
+            ],
+          ),
+        if (on == 'drive')
+          SettingsGroup(
+            title: 'Cloud storage',
+            children: [
+              SettingsRow(
+                title: 'Google Drive',
+                subtitle: _driveError.isNotEmpty ? _driveError : _driveText(admin),
+                trailing: _driveButton(admin),
+                below: _signin == null
+                    ? null
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Enter this code on the Google page (it is copied):'),
+                          const SizedBox(height: 6),
+                          SelectableText(_signin!['userCode'] ?? '', style: Theme.of(context).textTheme.headlineSmall),
+                          const SizedBox(height: 4),
+                          Text('Waiting for approval…', style: TextStyle(color: cs.onSurfaceVariant)),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        if (on == 'server')
+          SettingsGroup(
+            children: [
+              SettingsRow(
+                title: 'Remove this server from the app',
+                subtitle: 'Downloads on the server stay. Sign in again to add it back.',
+                danger: true,
+                onTap: _remove,
+              ),
+            ],
+          ),
       ],
     );
   }

@@ -11,7 +11,8 @@ import 'ui.dart';
 class AccountSettings extends StatefulWidget {
   final Servers servers;
   final Server server;
-  const AccountSettings({super.key, required this.servers, required this.server});
+  final String only; // one Settings page: account or control
+  const AccountSettings({super.key, required this.servers, required this.server, required this.only});
   @override
   State<AccountSettings> createState() => _AccountSettingsState();
 }
@@ -218,52 +219,54 @@ class _AccountSettingsState extends State<AccountSettings> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SettingsGroup(
-          title: 'Your account',
-          description: 'Signed in to ${widget.server.name} as ${widget.server.user}.',
-          children: [
-            SettingsRow(title: 'Change PIN', onTap: _changePin),
-            for (final d in _devices)
-              SettingsRow(
-                title: d['name'],
-                subtitle: d['current'] == true ? 'This device' : 'Signed in',
-                trailing: TextButton(
-                  onPressed: () => _signOutDevice(d),
-                  child: Text('Sign out', style: TextStyle(color: cs.error)),
+        if (widget.only == 'account')
+          SettingsGroup(
+            title: 'Your devices',
+            description: 'Signed in to ${widget.server.name} as ${widget.server.user}.',
+            children: [
+              SettingsRow(title: 'Change PIN', onTap: _changePin),
+              for (final d in _devices)
+                SettingsRow(
+                  title: d['name'],
+                  subtitle: d['current'] == true ? 'This device' : 'Signed in',
+                  trailing: TextButton(
+                    onPressed: () => _signOutDevice(d),
+                    child: Text('Sign out', style: TextStyle(color: cs.error)),
+                  ),
                 ),
-              ),
-          ],
-        ),
-        SettingsGroup(
-          title: 'Server control',
-          description: widget.server.adminKey.isEmpty
-              ? 'Adding people, updates and add-ons need server control. Your own downloads, files and Google Drive '
-                    'never do.'
-              : 'This device can add people, update the server and change add-ons. Devices with control:',
-          children: [
-            if (widget.server.adminKey.isEmpty)
-              SettingsRow(
-                title: 'Get server control',
-                subtitle: 'With a code from "sudo getaload admin" on the server',
-                onTap: _getControl,
-              ),
-            for (final d in _adminDevices)
-              SettingsRow(
-                title: d['name'],
-                subtitle: d['current'] == true ? 'This device' : null,
-                trailing: TextButton(
-                  onPressed: () => _removeControl(d),
-                  child: Text('Remove', style: TextStyle(color: cs.error)),
+            ],
+          ),
+        if (widget.only == 'control')
+          SettingsGroup(
+            title: 'Server control',
+            description: widget.server.adminKey.isEmpty
+                ? 'Adding people, updates and add-ons need server control. Your own downloads, files and Google Drive '
+                      'never do.'
+                : 'This device can add people, update the server and change add-ons. Devices with control:',
+            children: [
+              if (widget.server.adminKey.isEmpty)
+                SettingsRow(
+                  title: 'Get server control',
+                  subtitle: 'With a code from "sudo getaload admin" on the server',
+                  onTap: _getControl,
                 ),
-              ),
-          ],
-        ),
-        if (widget.server.adminKey.isNotEmpty)
+              for (final d in _adminDevices)
+                SettingsRow(
+                  title: d['name'],
+                  subtitle: d['current'] == true ? 'This device' : null,
+                  trailing: TextButton(
+                    onPressed: () => _removeControl(d),
+                    child: Text('Remove', style: TextStyle(color: cs.error)),
+                  ),
+                ),
+            ],
+          ),
+        if (widget.only == 'control' && widget.server.adminKey.isNotEmpty)
           SettingsGroup(
             title: 'People on this server',
             description:
                 'Each person signs in on their own phone or browser with their name and PIN, and sees only their own downloads '
-                'and files (not even you see them). To switch people here, sign out above.',
+                'and files (not even you see them). To switch people on this device, sign out in Your devices.',
             children: [
               for (final u in _users)
                 SettingsRow(
