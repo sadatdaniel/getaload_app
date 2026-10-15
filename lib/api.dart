@@ -175,7 +175,10 @@ class Api {
         final errs = (e['errors'] as List?)?.map((x) => x['message']).join('; ');
         msg = (errs != null && errs.isNotEmpty) ? errs : (e['detail'] ?? msg);
       } catch (_) {}
-      if (status == 401) {
+      if (status == 401 && server.adminKey.isNotEmpty && server.token == server.adminKey) {
+        // The admin key was taken away; the sign-in still works, so no "Sign in again" banner.
+        msg = 'This device no longer has server control (Settings, Server control).';
+      } else if (status == 401) {
         msg = 'This device needs to sign in to this server again.';
         unauthorized.value = server.url; // Home shows a "Sign in again" banner for this server
       }

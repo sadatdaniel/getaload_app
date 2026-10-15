@@ -1,5 +1,6 @@
-// Settings, GNOME style: a short list of topics, each opening its own page of grouped rows. This device's topics
-// first (look, player, downloads), then the person's, then the server's.
+// Settings, GNOME style: a short list of topics, each with its own page of grouped rows. Wide screens show the topics
+// in a sidebar and the chosen page beside it (like GNOME Settings); phones show the list and open a page on tap.
+// This device's topics first (look, player, downloads), then the person's, then the server's.
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
@@ -11,75 +12,201 @@ import 'settings.dart';
 import 'ui.dart';
 import 'users.dart';
 
-class SettingsView extends StatelessWidget {
+// The topic shown on wide screens. Kept outside the widget: Settings is rebuilt when the sign-in or admin key changes
+// (e.g. right after getting server control), and must stay on the same page.
+String _topic = 'Appearance';
+
+typedef _Topic = ({String title, String sub, IconData icon, int group, Widget Function(Server) page});
+
+class SettingsView extends StatefulWidget {
   final Servers servers;
   final Server server;
   const SettingsView({super.key, required this.servers, required this.server});
-
-  // Opens one topic. The page reads the server from the saved list on every change, so it sees a new sign-in or
-  // admin key (e.g. right after getting server control on that page).
-  void _open(BuildContext context, String title, Widget Function(Server s) page) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ListenableBuilder(
-          listenable: servers,
-          builder: (context, _) {
-            final s = servers.list.where((x) => x.url == server.url).firstOrNull ?? server;
-            return Scaffold(
-              appBar: AppBar(title: Text(title)),
-              body: ListView(
-                padding: const EdgeInsets.only(top: 8, bottom: 32),
-                children: [KeyedSubtree(key: ValueKey('${s.token.hashCode}${s.adminKey.hashCode}'), child: page(s))],
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
   @override
-  Widget build(BuildContext context) {
+  State<SettingsView> createState() => _SettingsViewState();
+}
+
+class _SettingsViewState extends State<SettingsView> {
+  Servers get servers => widget.servers;
+
+  // The server as saved now, so a page sees a new sign-in or admin key without being opened again.
+  Server get _current => servers.list.where((x) => x.url == widget.server.url).firstOrNull ?? widget.server;
+
+  Widget _page(_Topic t) => ListenableBuilder(
+    listenable: servers,
+    builder: (context, _) {
+      final s = _current;
+      return KeyedSubtree(key: ValueKey('${t.title}${s.token.hashCode}${s.adminKey.hashCode}'), child: t.page(s));
+    },
+  );
+
+  List<_Topic> get _topics {
     Widget local(Widget Function() f) =>
         ListenableBuilder(listenable: AppSettings.instance, builder: (context, _) => f()); // this device's choices
     Widget srv(Server s, String only) => ServerScreen(servers: servers, server: s, only: only);
-    final topics = <(String, String, Widget Function(Server))>[
-      ('Appearance', 'Light or dark, files as grid or list', (_) => local(_appearance)),
-      ('Player', 'Seek step, subtitles, playing the next file', (_) => local(_player)),
+    Widget acc(Server s, String only) => AccountSettings(servers: servers, server: s, only: only);
+    return [
       (
-        'Downloads',
-        'What to ask when adding, site sign-ins, leftover files',
-        (s) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [local(_adding), srv(s, 'downloads')]),
+        title: 'Appearance',
+        sub: 'Light or dark, files as grid or list',
+        icon: Icons.palette_outlined,
+        group: 0,
+        page: (_) => local(_appearance),
       ),
-      ('Google Drive', 'Your own Drive, for copies of your downloads', (s) => srv(s, 'drive')),
-      if (server.user.isNotEmpty) ...[
+      (
+        title: 'Player',
+        sub: 'Seek step, subtitles, playing the next file',
+        icon: Icons.play_circle_outline,
+        group: 0,
+        page: (_) => local(_player),
+      ),
+      (
+        title: 'Downloads',
+        sub: 'What to ask when adding, site sign-ins, leftover files',
+        icon: Icons.download_outlined,
+        group: 0,
+        page: (s) =>
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [local(_adding), srv(s, 'downloads')]),
+      ),
+      (
+        title: 'Google Drive',
+        sub: 'Your own Drive, for copies of your downloads',
+        icon: Icons.add_to_drive,
+        group: 1,
+        page: (s) => srv(s, 'drive'),
+      ),
+      if (widget.server.user.isNotEmpty) ...[
         (
-          'Your devices',
-          'Where you are signed in, and your PIN',
-          (s) => AccountSettings(servers: servers, server: s, only: 'account'),
+          title: 'Your devices',
+          sub: 'Where you are signed in, and your PIN',
+          icon: Icons.devices_outlined,
+          group: 1,
+          page: (s) => acc(s, 'account'),
         ),
         (
-          'Server control',
-          'People, updates and add-ons',
-          (s) => AccountSettings(servers: servers, server: s, only: 'control'),
+          title: 'Server control',
+          sub: 'People, updates and add-ons',
+          icon: Icons.admin_panel_settings_outlined,
+          group: 1,
+          page: (s) => acc(s, 'control'),
         ),
       ],
-      ('Server', 'Name, address, version and updates', (s) => srv(s, 'server')),
-      ('Network', 'Whether peers can reach the torrent port', (s) => srv(s, 'network')),
-      ('Add-ons (experimental)', 'Stremio catalogs and subtitles', (s) => srv(s, 'addons')),
-      ('About this app', 'Version and app updates', (_) => const AboutApp()),
+      (
+        title: 'Server',
+        sub: 'Name, address, version and updates',
+        icon: Icons.dns_outlined,
+        group: 2,
+        page: (s) => srv(s, 'server'),
+      ),
+      (
+        title: 'Network',
+        sub: 'Whether peers can reach the torrent port',
+        icon: Icons.lan_outlined,
+        group: 2,
+        page: (s) => srv(s, 'network'),
+      ),
+      (
+        title: 'Add-ons (experimental)',
+        sub: 'Stremio catalogs and subtitles',
+        icon: Icons.extension_outlined,
+        group: 2,
+        page: (s) => srv(s, 'addons'),
+      ),
+      (
+        title: 'About this app',
+        sub: 'Version and app updates',
+        icon: Icons.info_outline,
+        group: 2,
+        page: (_) => const AboutApp(),
+      ),
     ];
-    return ListView(
-      padding: const EdgeInsets.only(top: 8, bottom: 32),
-      children: [
-        SettingsGroup(
+  }
+
+  // Phones: the topic opens as its own page with a back arrow.
+  void _open(_Topic t) => Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => Scaffold(
+        appBar: AppBar(title: Text(t.title)),
+        body: ListView(padding: const EdgeInsets.only(top: 8, bottom: 32), children: [_page(t)]),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final topics = _topics;
+    return LayoutBuilder(
+      builder: (context, box) {
+        if (box.maxWidth < 840) {
+          return ListView(
+            padding: const EdgeInsets.only(top: 8, bottom: 32),
+            children: [
+              SettingsGroup(
+                children: [for (final t in topics) SettingsRow(title: t.title, subtitle: t.sub, onTap: () => _open(t))],
+              ),
+            ],
+          );
+        }
+        final shown = topics.where((t) => t.title == _topic).firstOrNull ?? topics.first;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final (title, sub, page) in topics)
-              SettingsRow(title: title, subtitle: sub, onTap: () => _open(context, title, page)),
+            SizedBox(width: 260, child: _sidebar(topics, shown)),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.only(top: 16, bottom: 32),
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 720),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_page(shown)]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
-        ),
-      ],
+        );
+      },
+    );
+  }
+
+  // GNOME-like sidebar: icon and title per topic, the chosen one highlighted, groups separated by a line.
+  Widget _sidebar(List<_Topic> topics, _Topic shown) {
+    final cs = Theme.of(context).colorScheme;
+    return ColoredBox(
+      color: cs.surfaceContainerLow,
+      child: ListView(
+        padding: const EdgeInsets.all(8),
+        children: [
+          for (final (i, t) in topics.indexed) ...[
+            if (i > 0 && topics[i - 1].group != t.group) const Divider(height: 17, indent: 8, endIndent: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 1),
+              child: Material(
+                color: t.title == shown.title ? cs.secondaryContainer : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => setState(() => _topic = t.title),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    child: Row(
+                      children: [
+                        Icon(t.icon, size: 20, color: cs.onSurfaceVariant),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(t.title, overflow: TextOverflow.ellipsis)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
