@@ -616,7 +616,7 @@ class _ServerScreenState extends State<ServerScreen> {
               if (_addons?['enabled'] == true)
                 SettingsRow(
                   title: 'Suggested',
-                  subtitle: 'Official Stremio add-ons for titles and subtitles only (no sources to watch).',
+                  subtitle: 'Official Stremio add-ons for titles, subtitles and links to legal streaming services (no sources to watch).',
                   below: Wrap(
                     spacing: 8,
                     runSpacing: 6,
@@ -624,6 +624,7 @@ class _ServerScreenState extends State<ServerScreen> {
                       for (final (name, url) in const [
                         ('Cinemeta (titles)', 'https://v3-cinemeta.strem.io/manifest.json'),
                         ('OpenSubtitles (subtitles)', 'https://opensubtitles-v3.strem.io/manifest.json'),
+                        ('WatchHub (where to watch)', 'https://watchhub.strem.io/manifest.json'),
                       ])
                         // Installed ones show a check and can't be added twice (the server keeps the base URL).
                         if (installed.contains(url.replaceFirst(RegExp(r'/manifest\.json$'), '')))
