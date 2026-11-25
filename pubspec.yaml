@@ -10,7 +10,7 @@ dependencies:
   android_intent_plus: ^6.1.0
   crypto: ^3.0.7
   desktop_drop: ^0.8.0
-  file_picker: ^13.1.0
+  file_picker: ^13.4.1
   flutter:
     sdk: flutter
   flutter_secure_storage: ^11.2.0
